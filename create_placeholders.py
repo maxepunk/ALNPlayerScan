@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Create placeholder images for all tokens
-Fixed version with correct RGB color tuples
+Works with new SF_ schema fields
 """
 
 from PIL import Image, ImageDraw, ImageFont
@@ -11,14 +11,15 @@ import os
 # Create output directory
 os.makedirs('assets/images', exist_ok=True)
 
-# Color scheme by type (RGB tuples, not hex strings!)
+# Color scheme by SF_MemoryType (RGB tuples)
 colors = {
     'Personal': (79, 189, 186),      # Teal
     'Technical': (126, 200, 227),    # Light blue
     'Business': (231, 76, 60),       # Red
     'Military': (149, 165, 166),     # Gray
     'Intelligence': (44, 62, 80),    # Dark blue
-    'Test': (136, 136, 136)          # Gray
+    'Test': (136, 136, 136),         # Gray
+    'Classified': (20, 20, 40)       # Very dark blue
 }
 
 # Load tokens
@@ -47,16 +48,16 @@ for token_id, token_data in tokens.items():
         continue
     
     try:
-        # Get color for this token type (use RGB tuple)
-        token_type = token_data.get('type', 'Test')
-        color = colors.get(token_type, (136, 136, 136))  # Default gray
+        # Get color for this token's SF_MemoryType
+        memory_type = token_data.get('SF_MemoryType', 'Unknown')
+        color = colors.get(memory_type, (136, 136, 136))  # Default gray
         
         # Create image with RGB color tuple
         img = Image.new('RGB', (800, 800), color=color)
         draw = ImageDraw.Draw(img)
         
-        # Get title
-        title = token_data.get('title', 'Unknown Memory')
+        # For player scanner, we don't show title - just use token ID
+        title = token_id
         
         # Try to use a system font, fallback to default
         try:
@@ -106,7 +107,7 @@ for token_id, token_data in tokens.items():
                 # Fallback to simple centering
                 x = 400
                 
-            draw.text((x, y_offset), line, fill=(255, 255, 255), font=font_large)
+            draw.text((x, y_offset), line, fill=(255, 255, 255), font=font_large, anchor=None)
             y_offset += 70
         
         # Add token ID at bottom
@@ -117,10 +118,10 @@ for token_id, token_data in tokens.items():
         except:
             x = 400
             
-        draw.text((x, 700), token_id, fill=(255, 255, 255, 180), font=font_small)
+        draw.text((x, 700), f"ID: {token_id}", fill=(255, 255, 255, 180), font=font_small)
         
-        # Add type badge
-        type_text = f"[{token_type}]"
+        # Add memory type badge (for debugging, but subtle)
+        type_text = f"[{memory_type}]"
         try:
             bbox = draw.textbbox((0, 0), type_text, font=font_small)
             text_width = bbox[2] - bbox[0]
@@ -132,7 +133,7 @@ for token_id, token_data in tokens.items():
         
         # Save image
         img.save(output_path, 'JPEG', quality=85)
-        print(f'  ✓ Created {token_id}.jpg ({token_type})')
+        print(f'  ✓ Created {token_id}.jpg ({memory_type})')
         created_count += 1
         
     except Exception as e:
@@ -152,8 +153,8 @@ if not os.path.exists(placeholder_path):
         except:
             font = ImageFont.load_default()
         
-        draw.text((400, 400), "?", fill=(255, 255, 255), anchor="mm")
-        draw.text((400, 500), "Image Not Found", fill=(255, 255, 255, 180), anchor="mm")
+        draw.text((400, 400), "?", fill=(255, 255, 255))
+        draw.text((400, 500), "Image Not Found", fill=(255, 255, 255, 180))
         
         img.save(placeholder_path, 'JPEG', quality=85)
         print(f'  ✓ Created placeholder.jpg')

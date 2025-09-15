@@ -82,8 +82,12 @@ def generate_labeled_qr():
             qr.add_data(token_id)
             qr.make(fit=True)
             
-            # Create QR image
+            # Create QR image (convert to PIL Image if needed)
             qr_img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert to PIL Image if it's not already
+            if hasattr(qr_img, '_img'):
+                qr_img = qr_img._img
             
             # Create a larger image with label space
             width, height = qr_img.size
@@ -102,15 +106,16 @@ def generate_labeled_qr():
                 font = ImageFont.load_default()
             
             # Add token ID
-            text = f"{token_id}"
+            text = f"ID: {token_id}"
             draw.text((10, height + 5), text, fill='black', font=font)
             
-            # Add title (truncated if too long)
-            title = token_data.get('title', 'Unknown')[:30]
-            draw.text((10, height + 25), title, fill='gray', font=font)
+            # Add memory type and group (for GM reference)
+            memory_type = token_data.get('SF_MemoryType', 'Unknown')
+            group = token_data.get('SF_Group', '')[:30]
+            draw.text((10, height + 25), f"Type: {memory_type}", fill='gray', font=font)
             
-            # Add rating stars
-            rating = '⭐' * token_data.get('rating', 0)
+            # Add value rating with stars
+            rating = '⭐' * token_data.get('SF_ValueRating', 0)
             draw.text((10, height + 45), rating, fill='black', font=font)
             
             # Save labeled version
@@ -126,7 +131,7 @@ def generate_labeled_qr():
     return generated
 
 def generate_color_qr():
-    """Generate QR codes with colors based on token type"""
+    """Generate QR codes with colors based on SF_MemoryType"""
     os.makedirs('qr-codes', exist_ok=True)
     
     try:
@@ -136,14 +141,15 @@ def generate_color_qr():
         print("❌ tokens.json not found!")
         return
     
-    # Color scheme using RGB tuples (not hex strings!)
+    # Color scheme using RGB tuples
     colors = {
         'Personal': (79, 189, 186),      # Teal
         'Technical': (126, 200, 227),    # Light blue
         'Business': (231, 76, 60),       # Red
         'Military': (149, 165, 166),     # Gray
         'Intelligence': (44, 62, 80),    # Dark blue
-        'Test': (136, 136, 136)          # Gray
+        'Test': (136, 136, 136),         # Gray
+        'Classified': (20, 20, 40)       # Very dark blue
     }
     
     print("\nGenerating colored QR codes...")
@@ -151,9 +157,9 @@ def generate_color_qr():
     
     for token_id, token_data in tokens.items():
         try:
-            # Get color for this token type
-            token_type = token_data.get('type', 'Test')
-            color = colors.get(token_type, (0, 0, 0))  # Default to black
+            # Get color for this token's SF_MemoryType
+            memory_type = token_data.get('SF_MemoryType', 'Unknown')
+            color = colors.get(memory_type, (0, 0, 0))  # Default to black
             
             # Create QR code
             qr = qrcode.QRCode(
@@ -172,7 +178,7 @@ def generate_color_qr():
             # Save colored version
             output_path = f'qr-codes/{token_id}_color.png'
             img.save(output_path)
-            print(f'  ✓ Generated {token_id}_color.png ({token_type})')
+            print(f'  ✓ Generated {token_id}_color.png ({memory_type})')
             generated += 1
             
         except Exception as e:
@@ -200,8 +206,8 @@ def main():
     if count > 0:
         print()
         print("Optional: Generate enhanced versions?")
-        print("1. Labeled QR codes (with title and rating)")
-        print("2. Colored QR codes (by token type)")
+        print("1. Labeled QR codes (with ID and metadata)")
+        print("2. Colored QR codes (by memory type)")
         print("3. Both")
         print("4. Skip")
         
