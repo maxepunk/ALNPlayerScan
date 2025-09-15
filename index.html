@@ -689,7 +689,15 @@
     
     <!-- QR Scanner Library -->
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
-    
+    <!-- Add this debug code right after -->
+    <script>
+    window.addEventListener('load', () => {
+        console.log('QrScanner available?', typeof QrScanner !== 'undefined');
+        if (typeof QrScanner === 'undefined') {
+            alert('QR Scanner library failed to load. Only NFC and Manual entry available.');
+        }
+    });
+    </script>
     <script>
         // Main Application Class
         class MemoryScanner {
@@ -1226,13 +1234,17 @@
         }
         
         // Initialize app when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                window.app = new MemoryScanner();
-            });
-        } else {
-            window.app = new MemoryScanner();
-        }
+        // Initialize app when DOM is ready
+    let app;  // Declare globally first
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            app = new MemoryScanner();
+            window.app = app;  // Make it available globally
+        });
+    } else {
+        app = new MemoryScanner();
+        window.app = app;
+    }
     </script>
 </body>
 </html>
