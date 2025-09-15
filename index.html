@@ -234,35 +234,26 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .memory-title {
-            font-size: 24px;
-            margin-bottom: 10px;
-            color: #4fbdba;
-            font-weight: 600;
-        }
-        
-        .memory-type {
-            display: inline-block;
-            background: rgba(79, 189, 186, 0.3);
-            padding: 6px 16px;
+        /* Audio-only placeholder */
+        .audio-placeholder {
+            width: 100%;
+            max-width: 350px;
+            height: 350px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #2a2a3e, #3a3a4e);
             border-radius: 20px;
-            font-size: 14px;
-            margin-bottom: 10px;
-            font-weight: 500;
+            margin-bottom: 20px;
+            font-size: 80px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
         }
         
-        .memory-rating {
-            color: #ffd700;
-            font-size: 22px;
+        .memory-status {
+            font-size: 16px;
+            color: #4fbdba;
             margin: 10px 0;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-        
-        .memory-description {
-            font-size: 14px;
-            opacity: 0.9;
-            line-height: 1.5;
-            margin-top: 10px;
+            font-weight: 500;
         }
         
         /* Buttons */
@@ -333,38 +324,7 @@
             animation: pulse 2s infinite;
         }
         
-        /* Stats Display */
-        .stats {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 12px;
-            font-size: 14px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            min-width: 150px;
-        }
-        
-        .stats h3 {
-            margin: 0 0 10px 0;
-            color: #4fbdba;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .stats div {
-            margin: 8px 0;
-            display: flex;
-            justify-content: space-between;
-        }
-        
-        .stats .value {
-            font-weight: bold;
-            color: #7ec8e3;
-        }
+        /* Removed stats display - player only sees media */
         
         /* Manual Entry Modal */
         .modal {
@@ -611,13 +571,12 @@
         
         <!-- Memory Display -->
         <div class="memory-display" id="memoryDisplay">
-            <img class="memory-image" id="memoryImage" src="" alt="Memory" onerror="app.handleImageError(this)">
-            <div class="memory-info">
-                <h2 class="memory-title" id="memoryTitle">Memory Title</h2>
-                <span class="memory-type" id="memoryType">Type</span>
-                <div class="memory-rating" id="memoryRating">⭐⭐⭐⭐⭐</div>
-                <p class="memory-description" id="memoryDescription"></p>
-            </div>
+            <h2>Memory Unlocked</h2>
+            <div class="memory-status" id="memoryStatus"></div>
+            
+            <!-- Image display or audio placeholder -->
+            <img class="memory-image" id="memoryImage" src="" alt="Memory" style="display: none;" onerror="app.handleImageError(this)">
+            <div class="audio-placeholder" id="audioPlaceholder" style="display: none;">🎵</div>
             
             <div class="audio-controls" id="audioControls">
                 <button onclick="app.playAudio()">▶️ Play Audio</button>
@@ -627,7 +586,7 @@
             <audio id="memoryAudio" style="display: none;"></audio>
             
             <button class="btn" onclick="app.continueScan()">
-                Scan Next Token
+                Continue Scanning
             </button>
             
             <button class="btn secondary" onclick="app.viewCollection()">
@@ -636,26 +595,7 @@
         </div>
     </div>
     
-    <!-- Stats Display -->
-    <div class="stats" id="statsDisplay" style="display: none;">
-        <h3>Session Stats</h3>
-        <div>
-            <span>Scanned:</span>
-            <span class="value" id="tokenCount">0</span>
-        </div>
-        <div>
-            <span>Unique:</span>
-            <span class="value" id="uniqueCount">0</span>
-        </div>
-        <div>
-            <span>Score:</span>
-            <span class="value" id="totalScore">0</span>
-        </div>
-        <div>
-            <span>Groups:</span>
-            <span class="value" id="groupCount">0</span>
-        </div>
-    </div>
+    <!-- Stats removed - player only sees media -->
     
     <!-- NFC Indicator -->
     <div class="nfc-indicator" id="nfcIndicator">
@@ -706,12 +646,6 @@
                 this.isScanning = false;
                 this.scannedTokens = new Set();
                 this.tokens = {};
-                this.stats = {
-                    tokenCount: 0,
-                    uniqueCount: 0,
-                    totalScore: 0,
-                    groups: new Set()
-                };
                 this.currentToken = null;
                 this.currentAudio = null;
                 this.deferredPrompt = null;
@@ -766,12 +700,10 @@
                 // Minimal fallback tokens if tokens.json fails to load
                 return {
                     'test_001': {
-                        id: 'test_001',
-                        title: 'Test Memory',
-                        type: 'Test',
-                        rating: 3,
-                        group: 'Development',
-                        description: 'This is a test token. Your tokens.json file may not be loading correctly.',
+                        SF_RFID: 'test_001',
+                        SF_ValueRating: 3,
+                        SF_MemoryType: 'Test',
+                        SF_Group: 'Development',
                         image: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"%3E%3Crect fill="%23888" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle"%3E❓%3C/text%3E%3C/svg%3E',
                         audio: null
                     }
@@ -838,12 +770,6 @@
                     try {
                         const data = JSON.parse(saved);
                         this.scannedTokens = new Set(data.scannedTokens || []);
-                        this.stats = {
-                            ...this.stats,
-                            ...data.stats,
-                            groups: new Set(data.stats?.groups || [])
-                        };
-                        this.updateStatsDisplay();
                         console.log('✅ Loaded saved progress');
                     } catch (error) {
                         console.error('Error loading saved data:', error);
@@ -854,10 +780,6 @@
             saveData() {
                 const data = {
                     scannedTokens: Array.from(this.scannedTokens),
-                    stats: {
-                        ...this.stats,
-                        groups: Array.from(this.stats.groups)
-                    },
                     lastScan: Date.now(),
                     version: '1.0'
                 };
@@ -927,9 +849,6 @@
                     await this.scanner.start();
                     this.isScanning = true;
                     
-                    // Show stats
-                    document.getElementById('statsDisplay').style.display = 'block';
-                    
                     console.log('📷 QR Scanner started');
                     
                 } catch (err) {
@@ -957,7 +876,6 @@
                     document.getElementById('nfcStatus').textContent = 'NFC Scanning...';
                     
                     this.isScanning = true;
-                    document.getElementById('statsDisplay').style.display = 'block';
                     
                     // NFC event listeners
                     ndef.addEventListener('reading', ({ message, serialNumber }) => {
@@ -1033,37 +951,17 @@
             }
             
             processToken(token) {
-                // Update stats
-                this.stats.tokenCount++;
-                if (!this.scannedTokens.has(token.id)) {
-                    this.scannedTokens.add(token.id);
-                    this.stats.uniqueCount++;
-                    
-                    // Track groups
-                    if (token.group) {
-                        this.stats.groups.add(token.group);
-                    }
+                // Track if new or revisited
+                const isNew = !this.scannedTokens.has(token.SF_RFID || token.id);
+                if (isNew) {
+                    this.scannedTokens.add(token.SF_RFID || token.id);
                 }
-                
-                // Calculate score
-                const baseScore = token.rating * 100;
-                const groupMultiplier = this.getGroupMultiplier(token.group);
-                const score = baseScore * groupMultiplier;
-                this.stats.totalScore += score;
                 
                 // Save current token
                 this.currentToken = token;
                 
-                // Display memory
-                this.displayMemory(token);
-                
-                // Check for audio
-                if (token.audio) {
-                    this.setupAudio(token.audio);
-                }
-                
-                // Update stats display
-                this.updateStatsDisplay();
+                // Display memory with status
+                this.displayMemory(token, isNew);
                 
                 // Save progress
                 this.saveData();
@@ -1073,36 +971,46 @@
                     navigator.vibrate(200);
                 }
                 
-                console.log('✅ Token processed:', token.id);
+                console.log('✅ Token processed:', token.SF_RFID || token.id);
             }
             
-            getGroupMultiplier(group) {
-                if (!group) return 1;
-                
-                // Extract multiplier from group name (e.g., "Childhood (x3)")
-                const match = group.match(/\(x(\d+)\)/);
-                return match ? parseInt(match[1]) : 1;
-            }
             
-            displayMemory(token) {
+            displayMemory(token, isNew) {
                 // Hide scanner, show memory display
                 document.getElementById('scannerContainer').classList.remove('active');
                 document.getElementById('memoryDisplay').classList.add('active');
                 
-                // Update display elements
-                document.getElementById('memoryTitle').textContent = token.title;
-                document.getElementById('memoryType').textContent = token.type;
-                document.getElementById('memoryDescription').textContent = token.description || '';
+                // Show status (new vs revisited)
+                const status = document.getElementById('memoryStatus');
+                status.textContent = isNew ? '✨ New Memory!' : '✓ Memory Revisited';
                 
-                // Update rating stars
-                const stars = '⭐'.repeat(token.rating) + '☆'.repeat(5 - token.rating);
-                document.getElementById('memoryRating').textContent = stars;
-                
-                // Load image
+                // Handle image display
                 const img = document.getElementById('memoryImage');
-                img.classList.add('loading');
-                img.src = token.image;
-                img.onload = () => img.classList.remove('loading');
+                const placeholder = document.getElementById('audioPlaceholder');
+                
+                if (token.image) {
+                    img.style.display = 'block';
+                    placeholder.style.display = 'none';
+                    img.classList.add('loading');
+                    img.src = token.image;
+                    img.onload = () => img.classList.remove('loading');
+                } else {
+                    // No image - show placeholder if audio exists, otherwise hide both
+                    img.style.display = 'none';
+                    placeholder.style.display = token.audio ? 'flex' : 'none';
+                }
+                
+                // Setup audio if exists
+                if (token.audio) {
+                    this.setupAudio(token.audio);
+                } else {
+                    document.getElementById('audioControls').classList.remove('active');
+                }
+                
+                // If no media at all, show token ID
+                if (!token.image && !token.audio) {
+                    status.textContent += ` Token: ${token.SF_RFID || token.id}`;
+                }
             }
             
             handleImageError(img) {
@@ -1145,12 +1053,6 @@
                 }
             }
             
-            updateStatsDisplay() {
-                document.getElementById('tokenCount').textContent = this.stats.tokenCount;
-                document.getElementById('uniqueCount').textContent = this.stats.uniqueCount;
-                document.getElementById('totalScore').textContent = this.stats.totalScore;
-                document.getElementById('groupCount').textContent = this.stats.groups.size;
-            }
             
             continueScan() {
                 // Stop any playing audio
@@ -1162,12 +1064,16 @@
             }
             
             viewCollection() {
-                // This could open a collection view
-                const collected = Array.from(this.scannedTokens).map(id => this.tokens[id]);
-                console.log('📚 Collection:', collected);
+                // Show list of collected token IDs
+                const collected = Array.from(this.scannedTokens);
+                const count = collected.length;
                 
-                // For now, just alert the stats
-                alert(`Collection Stats:\n\nTokens Scanned: ${this.stats.tokenCount}\nUnique Memories: ${this.stats.uniqueCount}\nTotal Score: ${this.stats.totalScore}\nGroups Discovered: ${this.stats.groups.size}`);
+                if (count === 0) {
+                    alert('No memories collected yet. Start scanning!');
+                } else {
+                    const tokenList = collected.sort().join('\n');
+                    alert(`Collected Memories (${count} unique):\n\n${tokenList}`);
+                }
             }
             
             showManualEntry() {
@@ -1227,7 +1133,7 @@
                 const debugInfo = {
                     tokens: Object.keys(this.tokens).length,
                     scanned: this.scannedTokens.size,
-                    stats: this.stats
+                    collected: Array.from(this.scannedTokens)
                 };
                 console.table(debugInfo);
             }
