@@ -1,0 +1,29 @@
+name: Sync & Deploy
+
+on:
+  workflow_dispatch:  # Manual trigger via GitHub UI - the "Run workflow" button
+
+jobs:
+  sync-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ github.token }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      
+      - name: Install dependencies
+        run: pip install qrcode[pil]
+      
+      - name: Sync and Deploy
+        run: python3 sync.py --deploy
+        
+      # The sync.py script handles all git operations including push
+      # No additional commit step needed
