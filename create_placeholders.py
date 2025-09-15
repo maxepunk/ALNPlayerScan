@@ -22,15 +22,21 @@ colors = {
     'Classified': (20, 20, 40)       # Very dark blue
 }
 
-# Load tokens
+# Load tokens - try submodule path first, then root
+tokens = None
 try:
-    with open('tokens.json', 'r') as f:
+    with open('data/tokens.json', 'r') as f:
         tokens = json.load(f)
-    print(f"Loaded {len(tokens)} tokens from tokens.json")
+    print(f"Loaded {len(tokens)} tokens from data/tokens.json")
 except FileNotFoundError:
-    print("ERROR: tokens.json not found!")
-    print("Please make sure tokens.json exists in the current directory")
-    exit(1)
+    try:
+        with open('tokens.json', 'r') as f:
+            tokens = json.load(f)
+        print(f"Loaded {len(tokens)} tokens from tokens.json")
+    except FileNotFoundError:
+        print("ERROR: tokens.json not found!")
+        print("Please make sure tokens.json exists in data/ or current directory")
+        exit(1)
 
 print("\nCreating placeholder images...")
 print("-" * 40)

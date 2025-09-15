@@ -14,14 +14,21 @@ def generate_simple_qr():
     # Create output directory
     os.makedirs('qr-codes', exist_ok=True)
     
-    # Load tokens
+    # Load tokens - try submodule path first, then root
+    tokens = None
     try:
-        with open('tokens.json', 'r') as f:
+        with open('data/tokens.json', 'r') as f:
             tokens = json.load(f)
+            print("✅ Loaded tokens from data/tokens.json")
     except FileNotFoundError:
-        print("❌ tokens.json not found!")
-        print("Please create tokens.json first")
-        return
+        try:
+            with open('tokens.json', 'r') as f:
+                tokens = json.load(f)
+                print("✅ Loaded tokens from tokens.json")
+        except FileNotFoundError:
+            print("❌ tokens.json not found in data/ or root!")
+            print("Please ensure tokens.json exists")
+            return
     
     print("Generating QR codes...")
     generated = 0
@@ -59,12 +66,18 @@ def generate_labeled_qr():
     """Generate QR codes with labels for easier identification"""
     os.makedirs('qr-codes', exist_ok=True)
     
+    # Load tokens - try submodule path first, then root
+    tokens = None
     try:
-        with open('tokens.json', 'r') as f:
+        with open('data/tokens.json', 'r') as f:
             tokens = json.load(f)
     except FileNotFoundError:
-        print("❌ tokens.json not found!")
-        return
+        try:
+            with open('tokens.json', 'r') as f:
+                tokens = json.load(f)
+        except FileNotFoundError:
+            print("❌ tokens.json not found!")
+            return
     
     print("\nGenerating labeled QR codes...")
     generated = 0
@@ -134,12 +147,18 @@ def generate_color_qr():
     """Generate QR codes with colors based on SF_MemoryType"""
     os.makedirs('qr-codes', exist_ok=True)
     
+    # Load tokens - try submodule path first, then root
+    tokens = None
     try:
-        with open('tokens.json', 'r') as f:
+        with open('data/tokens.json', 'r') as f:
             tokens = json.load(f)
     except FileNotFoundError:
-        print("❌ tokens.json not found!")
-        return
+        try:
+            with open('tokens.json', 'r') as f:
+                tokens = json.load(f)
+        except FileNotFoundError:
+            print("❌ tokens.json not found!")
+            return
     
     # Color scheme using RGB tuples
     colors = {
@@ -194,10 +213,10 @@ def main():
     print("=" * 60)
     print()
     
-    # Check if tokens.json exists
-    if not os.path.exists('tokens.json'):
+    # Check if tokens.json exists (try submodule path first)
+    if not os.path.exists('data/tokens.json') and not os.path.exists('tokens.json'):
         print("❌ Error: tokens.json not found!")
-        print("Please ensure tokens.json is in the current directory")
+        print("Please ensure tokens.json exists in data/ or current directory")
         return
     
     # Generate simple QR codes (these are required)

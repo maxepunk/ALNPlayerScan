@@ -682,17 +682,29 @@
             
             async loadTokenDatabase() {
                 try {
-                    const response = await fetch('./tokens.json');
+                    // Try loading from submodule path first
+                    const response = await fetch('./data/tokens.json');
                     if (!response.ok) {
-                        throw new Error('Failed to load token database');
+                        throw new Error('Failed to load token database from submodule');
                     }
                     this.tokens = await response.json();
-                    console.log(`✅ Loaded ${Object.keys(this.tokens).length} tokens`);
+                    console.log(`✅ Loaded ${Object.keys(this.tokens).length} tokens from data/tokens.json`);
                 } catch (error) {
-                    console.error('Error loading tokens.json:', error);
-                    // Fallback to embedded tokens
-                    this.tokens = this.getDefaultTokens();
-                    console.log('⚠️ Using fallback token database');
+                    console.error('Error loading data/tokens.json:', error);
+                    try {
+                        // Fallback to root directory (for backward compatibility)
+                        const response = await fetch('./tokens.json');
+                        if (!response.ok) {
+                            throw new Error('Failed to load token database');
+                        }
+                        this.tokens = await response.json();
+                        console.log(`✅ Loaded ${Object.keys(this.tokens).length} tokens from tokens.json`);
+                    } catch (error2) {
+                        console.error('Error loading tokens.json:', error2);
+                        // Fallback to embedded tokens
+                        this.tokens = this.getDefaultTokens();
+                        console.log('⚠️ Using fallback token database');
+                    }
                 }
             }
             

@@ -20,21 +20,29 @@ if not ARDUINO_PROJECT:
     ARDUINO_PROJECT = "./arduino-project"
 
 WEB_PROJECT = "./"  # Current directory
-TOKENS_FILE = "tokens.json"
 
 # Create output directories
 os.makedirs("assets/images", exist_ok=True)
 os.makedirs("assets/audio", exist_ok=True)
 
-# Load tokens database
+# Load tokens database - try submodule path first, then root
+tokens = None
+TOKENS_FILE = None
 try:
-    with open(TOKENS_FILE, 'r') as f:
+    with open('data/tokens.json', 'r') as f:
         tokens = json.load(f)
-    print(f"✅ Loaded {len(tokens)} tokens from {TOKENS_FILE}")
+        TOKENS_FILE = 'data/tokens.json'
+    print(f"✅ Loaded {len(tokens)} tokens from data/tokens.json")
 except FileNotFoundError:
-    print(f"❌ {TOKENS_FILE} not found!")
-    print("Please create tokens.json first")
-    exit(1)
+    try:
+        with open('tokens.json', 'r') as f:
+            tokens = json.load(f)
+            TOKENS_FILE = 'tokens.json'
+        print(f"✅ Loaded {len(tokens)} tokens from tokens.json")
+    except FileNotFoundError:
+        print("❌ tokens.json not found!")
+        print("Please ensure tokens.json exists in data/ or current directory")
+        exit(1)
 
 print()
 print("🖼️ Converting Images...")
