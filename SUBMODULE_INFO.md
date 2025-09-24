@@ -14,6 +14,8 @@ The shared `tokens.json` contains both player-facing and GM-facing fields:
     // Player Scanner uses these:
     "image": "path/to/image",  
     "audio": "path/to/audio",
+    "video": "path/to/video",
+    "processingImage": "path/to/processingImage",
     
     // GM Scanner uses these:
     "SF_RFID": "token_id",
