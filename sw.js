@@ -1,13 +1,15 @@
 // Service Worker for ALN Memory Scanner
 // Version 1.0.0 - Update this when making changes
 
-const CACHE_NAME = 'aln-scanner-v1';
+const CACHE_NAME = 'aln-scanner-v1.1';  // Updated for orchestrator integration
 const APP_SHELL = [
   './',
   './index.html',
+  './config.html',  // Orchestrator configuration page
   './manifest.json',
   './tokens.json',
-  './assets/images/placeholder.jpg'
+  './assets/images/placeholder.jpg',
+  './js/orchestratorIntegration.js'  // Orchestrator client
 ];
 
 const EXTERNAL_RESOURCES = [
@@ -76,6 +78,27 @@ self.addEventListener('fetch', event => {
   
   // Skip non-GET requests
   if (request.method !== 'GET') {
+    return;
+  }
+
+  // Handle orchestrator API requests (network-first strategy)
+  if (url.href.includes('/api/') || url.href.includes(':3000')) {
+    event.respondWith(
+      fetch(request)
+        .catch(() => {
+          // Return offline response for orchestrator APIs
+          return new Response(
+            JSON.stringify({
+              status: 'offline',
+              message: 'Orchestrator not available'
+            }),
+            {
+              status: 503,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        })
+    );
     return;
   }
   
