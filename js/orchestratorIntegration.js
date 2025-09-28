@@ -4,7 +4,7 @@
  */
 class OrchestratorIntegration {
   constructor() {
-    this.baseUrl = localStorage.getItem('orchestrator_url') || 'http://192.168.1.10:3000';
+    this.baseUrl = localStorage.getItem('orchestrator_url') || this.detectOrchestratorUrl();
     this.offlineQueue = [];
     this.connected = false;
     this.maxQueueSize = 100; // Maximum offline transactions
@@ -17,6 +17,15 @@ class OrchestratorIntegration {
 
     // Start connection monitoring
     this.startConnectionMonitor();
+  }
+
+  detectOrchestratorUrl() {
+    // If served from orchestrator, use same origin
+    if (window.location.pathname.startsWith('/player-scanner/')) {
+      return window.location.origin;
+    }
+    // Fallback to localhost for development
+    return 'http://localhost:3000';
   }
 
   async scanToken(tokenId, teamId) {

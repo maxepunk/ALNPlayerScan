@@ -309,23 +309,39 @@
             serversDiv.innerHTML = '<p class="info-text">Looking for orchestrators on the network...</p>';
 
             try {
-                // Try common local IPs (simplified discovery)
+                // Detect current subnet dynamically
+                const currentHost = window.location.hostname;
+                let subnet = '192.168.1'; // Default fallback
+
+                // Try to detect subnet from current host
+                if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+                    const parts = currentHost.split('.');
+                    if (parts.length >= 3) {
+                        subnet = parts.slice(0, 3).join('.');
+                    }
+                }
+
                 const commonPorts = [3000, 8080];
                 const promises = [];
 
-                // Get local IP range (simplified)
+                // Scan detected subnet
                 for (let i = 1; i <= 254; i++) {
                     for (const port of commonPorts) {
-                        const url = `http://192.168.1.${i}:${port}`;
+                        const url = `http://${subnet}.${i}:${port}`;
                         promises.push(
                             fetch(`${url}/api/state/status`, {
                                 method: 'GET',
                                 mode: 'cors',
-                                signal: AbortSignal.timeout(1000)
+                                signal: AbortSignal.timeout(500)
                             })
                             .then(response => response.ok ? url : null)
                             .catch(() => null)
                         );
+                    }
+
+                    // Limit concurrent requests to avoid overwhelming the network
+                    if (promises.length >= 20) {
+                        await Promise.race(promises);
                     }
                 }
 
@@ -338,8 +354,13 @@
                     .catch(() => null)
                 );
 
+                // Try current origin if served from orchestrator
+                if (window.location.pathname.startsWith('/player-scanner/')) {
+                    promises.push(Promise.resolve(window.location.origin));
+                }
+
                 const results = await Promise.all(promises);
-                const foundServers = results.filter(url => url !== null);
+                const foundServers = [...new Set(results.filter(url => url !== null))];
 
                 if (foundServers.length > 0) {
                     serversDiv.innerHTML = '<p class="info-text">Found orchestrators:</p>';
