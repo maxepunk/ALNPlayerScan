@@ -41,7 +41,7 @@ class OrchestratorIntegration {
         body: JSON.stringify({
           tokenId,
           teamId,
-          scannerId: this.deviceId,
+          deviceId: this.deviceId,
           timestamp: new Date().toISOString()
         })
       });
@@ -112,7 +112,7 @@ class OrchestratorIntegration {
           transactions: batch.map(item => ({
             tokenId: item.tokenId,
             teamId: item.teamId,
-            scannerId: this.deviceId,
+            deviceId: this.deviceId,
             timestamp: new Date(item.timestamp).toISOString()
           }))
         })
