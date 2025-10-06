@@ -11,6 +11,7 @@ class OrchestratorIntegration {
     this.retryDelay = 1000;  // Initial retry delay (exponential backoff)
     this.deviceId = localStorage.getItem('device_id') || 'PLAYER_' + Date.now();
     this.connectionCheckInterval = null;
+    this.pendingConnectionCheck = null;  // Track pending connection check
 
     // Load offline queue from localStorage
     this.loadQueue();
@@ -173,12 +174,12 @@ class OrchestratorIntegration {
   }
 
   startConnectionMonitor() {
-    // Initial check
-    this.checkConnection();
+    // Initial check (store Promise for test cleanup)
+    this.pendingConnectionCheck = this.checkConnection();
 
     // Check every 10 seconds
     this.connectionCheckInterval = setInterval(() => {
-      this.checkConnection();
+      this.pendingConnectionCheck = this.checkConnection();
     }, 10000);
   }
 
@@ -225,8 +226,16 @@ class OrchestratorIntegration {
     console.log('Offline queue cleared');
   }
 
-  destroy() {
+  async destroy() {
     this.stopConnectionMonitor();
+
+    // Wait for pending connection check to complete (prevents "Cannot log after tests are done")
+    if (this.pendingConnectionCheck) {
+      await this.pendingConnectionCheck.catch(() => {
+        // Ignore errors during cleanup
+      });
+      this.pendingConnectionCheck = null;
+    }
   }
 }
 
