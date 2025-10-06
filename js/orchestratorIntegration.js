@@ -40,7 +40,7 @@ class OrchestratorIntegration {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tokenId,
-          teamId,
+          ...(teamId && { teamId }),  // Only include if truthy (contract: optional string, not null)
           deviceId: this.deviceId,
           timestamp: new Date().toISOString()
         })
@@ -141,7 +141,7 @@ class OrchestratorIntegration {
 
   async checkConnection() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/state/status`, {
+      const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         cache: 'no-cache',
         signal: AbortSignal.timeout(5000)
