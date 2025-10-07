@@ -1,23 +1,42 @@
 /**
  * OrchestratorIntegration - Manages communication with ALN Orchestrator
  * Provides offline queue support and automatic retry with exponential backoff
+ *
+ * DUAL-MODE OPERATION:
+ * - Networked Mode: Served from /player-scanner/ path, connection monitoring + queue
+ * - Standalone Mode: Served from GitHub Pages, NO monitoring, NO queue (FR:113, 219, 222)
  */
 class OrchestratorIntegration {
   constructor() {
     this.baseUrl = localStorage.getItem('orchestrator_url') || this.detectOrchestratorUrl();
-    this.offlineQueue = [];
-    this.connected = false;
     this.maxQueueSize = 100; // Maximum offline transactions
     this.retryDelay = 1000;  // Initial retry delay (exponential backoff)
     this.deviceId = localStorage.getItem('device_id') || 'PLAYER_' + Date.now();
-    this.connectionCheckInterval = null;
-    this.pendingConnectionCheck = null;  // Track pending connection check
 
-    // Load offline queue from localStorage
-    this.loadQueue();
+    // Detect deployment mode (FR:113 - Standalone "never attempts to connect")
+    this.isStandalone = !window.location.pathname.startsWith('/player-scanner/');
 
-    // Start connection monitoring
-    this.startConnectionMonitor();
+    if (!this.isStandalone) {
+      // NETWORKED MODE: Connection monitoring + offline queue
+      this.offlineQueue = [];
+      this.connected = false;
+      this.connectionCheckInterval = null;
+      this.pendingConnectionCheck = null;
+
+      // Load offline queue from localStorage
+      this.loadQueue();
+
+      // Start connection monitoring
+      this.startConnectionMonitor();
+    } else {
+      // STANDALONE MODE: No monitoring, no queue (FR:219 - "transactions processed immediately")
+      this.offlineQueue = [];
+      this.connected = false;
+      this.connectionCheckInterval = null;
+      this.pendingConnectionCheck = undefined;
+
+      console.log('Player Scanner: Standalone mode detected (no orchestrator connection)');
+    }
   }
 
   detectOrchestratorUrl() {
@@ -30,6 +49,13 @@ class OrchestratorIntegration {
   }
 
   async scanToken(tokenId, teamId) {
+    // STANDALONE MODE: Process locally, never attempt network (FR:113, FR:222)
+    if (this.isStandalone) {
+      console.log(`Standalone scan: ${tokenId} (local processing only)`);
+      return { status: 'standalone', logged: true };
+    }
+
+    // NETWORKED MODE: Attempt network or queue for sync
     if (!this.connected) {
       this.queueOffline(tokenId, teamId);
       return { status: 'offline', queued: true };
@@ -227,6 +253,12 @@ class OrchestratorIntegration {
   }
 
   async destroy() {
+    // STANDALONE MODE: No monitoring to destroy
+    if (this.isStandalone) {
+      return;
+    }
+
+    // NETWORKED MODE: Stop monitoring and await pending checks
     this.stopConnectionMonitor();
 
     // Wait for pending connection check to complete (prevents "Cannot log after tests are done")

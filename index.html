@@ -675,7 +675,7 @@
             <div class="memory-status" id="memoryStatus"></div>
             
             <!-- Image display or audio placeholder -->
-            <img class="memory-image" id="memoryImage" src="" alt="Memory" style="display: none;" onerror="app.handleImageError(this)">
+            <img class="memory-image" id="memoryImage" src="" alt="Memory" style="display: none;">
             <div class="audio-placeholder" id="audioPlaceholder" style="display: none;">🎵</div>
             
             <div class="audio-controls" id="audioControls">
@@ -1039,10 +1039,29 @@
             
             handleScan(tokenId) {
                 console.log('🔍 Scanned token:', tokenId);
-                
+
                 // Normalize token ID (remove special characters, lowercase)
                 tokenId = tokenId.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                
+
+                // Validate token ID (Bug #3 fix - OpenAPI contract compliance)
+                if (!tokenId || tokenId.length === 0) {
+                    console.log('❌ Invalid token: Empty after normalization');
+                    this.showError('Invalid token: ID contains only special characters');
+                    if (navigator.vibrate) {
+                        navigator.vibrate([100, 50, 100]);
+                    }
+                    return;
+                }
+
+                if (tokenId.length > 100) {
+                    console.log('❌ Invalid token: Exceeds 100 character limit');
+                    this.showError(`Invalid token: ID too long (${tokenId.length} characters, max 100)`);
+                    if (navigator.vibrate) {
+                        navigator.vibrate([100, 50, 100]);
+                    }
+                    return;
+                }
+
                 // Check if token exists in database
                 const token = this.tokens[tokenId];
                 
@@ -1068,19 +1087,25 @@
                     // Show processing modal
                     document.getElementById('video-processing').classList.add('active');
 
-                    // Get current team from UI or use default
-                    const teamId = sessionStorage.getItem('currentTeam') || 'TEAM_A';
+                    // Get current team from UI or use default (3-digit format per OpenAPI contract)
+                    const teamId = sessionStorage.getItem('currentTeam') || '001';
+
+                    // Set timeout IMMEDIATELY to guarantee modal hides (Bug #5 fix)
+                    // Modal will auto-hide after 2.5s regardless of promise state
+                    const modalTimeout = setTimeout(() => {
+                        document.getElementById('video-processing').classList.remove('active');
+                    }, 2500);
 
                     // Send to orchestrator
                     orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
                         console.log('Orchestrator response:', response);
-
-                        // Hide modal after 2 seconds
-                        setTimeout(() => {
-                            document.getElementById('video-processing').classList.remove('active');
-                        }, 2000);
+                        // Can hide early if we get fast response
+                        clearTimeout(modalTimeout);
+                        document.getElementById('video-processing').classList.remove('active');
                     }).catch(error => {
                         console.error('Orchestrator error:', error);
+                        // Hide immediately on error
+                        clearTimeout(modalTimeout);
                         document.getElementById('video-processing').classList.remove('active');
                     });
                 }
