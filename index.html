@@ -1099,6 +1099,14 @@
                     // Send to orchestrator
                     orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
                         console.log('Orchestrator response:', response);
+
+                        // Check for error or queued status
+                        if (response.status === 'error' && response.error) {
+                            this.showError(response.error);
+                        } else if (response.queued) {
+                            this.showError('Scan queued - orchestrator unavailable');
+                        }
+
                         // Can hide early if we get fast response
                         clearTimeout(modalTimeout);
                         document.getElementById('video-processing').classList.remove('active');

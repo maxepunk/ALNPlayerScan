@@ -74,7 +74,17 @@ class OrchestratorIntegration {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to parse error response body
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // If JSON parsing fails, use default message
+        }
+        throw new Error(errorMessage);
       }
 
       return await response.json();
