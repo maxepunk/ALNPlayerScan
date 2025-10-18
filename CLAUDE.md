@@ -4,55 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ALN Memory Scanner is a Progressive Web App (PWA) for a live-action role-playing game. It allows Game Masters to scan QR codes/RFID tokens to display memory information to players, including images and audio. The app is designed to work offline and can be deployed as a GitHub Pages site.
+ALN Memory Scanner is a Progressive Web App (PWA) for the "About Last Night" immersive game. Players scan QR codes/RFID tokens to reveal memory content (images, audio, video). The app supports two deployment modes:
 
-## Key Architecture
+1. **Standalone Mode** (GitHub Pages): No backend, purely client-side, local-only operation
+2. **Networked Mode** (Orchestrator Integration): Connected to backend orchestrator for video playback and synchronized state
 
-### Token Data Management
-- **Shared Database**: Uses Git submodule at `data/` linked to https://github.com/maxepunk/ALN-TokenData
-- **Token Structure**: Each token has GM fields (`SF_RFID`, `SF_ValueRating`, `SF_MemoryType`, `SF_Group`) and player fields (`image`, `audio`)
-- **Fallback Chain**: App loads from `data/tokens.json` → `tokens.json` (root) → demo data
+## Critical Architecture Decisions
 
-### Core Components
-- **index.html**: Single-page PWA with integrated JavaScript for QR scanning, collection management, and UI
-- **sw.js**: Service worker for offline functionality and caching
-- **manifest.json**: PWA configuration (note: actual file is `manifest.sjon` - typo in filename)
+### Dual-Mode Operation
+The scanner detects its deployment context automatically:
+- **Standalone**: Served from GitHub Pages (any path except `/player-scanner/`)
+- **Networked**: Served from orchestrator at `/player-scanner/` path
 
-## Development Commands
-
-### Generate QR Codes
-```bash
-python3 generate-qr.py
+Detection in `js/orchestratorIntegration.js:17`:
+```javascript
+this.isStandalone = !window.location.pathname.startsWith('/player-scanner/');
 ```
-Generates QR codes in `qr-codes/` directory with options for:
-- Simple black & white
-- Labeled (with metadata)
-- Colored (by memory type)
 
-### Create Placeholder Images
-```bash
-python3 create_placeholders.py
+**Implications:**
+- Standalone mode NEVER attempts orchestrator connection (no monitoring, no queue)
+- Networked mode enables connection monitoring and offline queue management
+- Mode cannot be manually configured - purely path-based detection
+
+### Token Data Synchronization Architecture
+
+**Shared Database via Git Submodule:**
 ```
-Creates placeholder images for tokens without actual images.
-
-### Convert Arduino Assets
-```bash
-python3 convert-arduino-assets.py
+aln-memory-scanner/
+├── data/                    # Git submodule → ALN-TokenData repo
+│   └── tokens.json          # Shared with Player Scanner and GM Scanner
+└── tokens.json.backup       # Fallback (deprecated)
 ```
-Converts assets for Arduino/embedded system compatibility.
 
-### Initial Setup
-```bash
-bash scripts/setup.sh
+**Key Principle**: Single source of truth via Git submodules. Both Player Scanner and GM Scanner repos point to the same ALN-TokenData repository.
+
+**Fallback Chain** (`index.html:~800`):
+1. `data/tokens.json` (submodule - preferred)
+2. `tokens.json` (root - backward compatibility)
+3. Demo data (hardcoded fallback)
+
+### Token Structure
+Each token contains both player-facing and GM-facing fields:
+```json
+{
+  "token_id": {
+    "image": "assets/images/file.jpg",    // Player scanner displays
+    "audio": "assets/audio/file.mp3",     // Player scanner plays
+    "video": "filename.mp4",              // Triggers orchestrator playback
+    "SF_RFID": "token_id",                // GM scanner logic
+    "SF_ValueRating": 1-5,                // GM scanner scoring
+    "SF_MemoryType": "Type",              // GM scanner categorization
+    "SF_Group": "Group (xN)"              // GM scanner set tracking
+  }
+}
 ```
-Interactive setup script for creating project structure and GitHub Pages deployment.
 
-### Update Token Submodule
+**Path Resolution:**
+- Images/Audio: Relative paths from scanner app (`assets/images/`, `assets/audio/`)
+- Videos: Filename only (orchestrator resolves to `backend/public/videos/`)
+
+## Development Workflow
+
+### Primary Command: sync.py
+The `sync.py` script is the central tool for ALL token and deployment operations:
+
 ```bash
-# Get latest tokens from shared repository
-git submodule update --remote
+python3 sync.py              # Sync tokens + regenerate QR codes locally
+python3 sync.py --deploy     # Sync + regenerate + deploy to GitHub Pages
+python3 sync.py --local      # Sync locally (no GitHub operations)
+```
 
-# Or edit tokens directly
+**What sync.py does:**
+1. Enters `data/` submodule directory
+2. Commits local token changes (if any) to ALN-TokenData repo
+3. Pushes to shared repository
+4. Pulls latest changes from other contributors
+5. Returns to parent repo
+6. Regenerates QR codes (adds new, removes old, updates changed)
+7. (With `--deploy`) Commits and pushes to GitHub Pages
+
+**Critical**: Always run `sync.py --deploy` after editing tokens anywhere (GM scanner, Player scanner, or ALN-TokenData directly).
+
+### Token Editing Workflow
+
+**Option 1: Edit in submodule**
+```bash
 cd data
 git checkout main
 # Edit tokens.json
@@ -60,32 +96,160 @@ git add tokens.json
 git commit -m "Update tokens"
 git push origin main
 cd ..
-git add data
-git commit -m "Update submodule reference"
+python3 sync.py --deploy  # Sync QR codes and deploy
 ```
 
-## Testing
+**Option 2: Use sync.py (recommended)**
+```bash
+# Edit data/tokens.json directly
+python3 sync.py --deploy  # Handles all git operations automatically
+```
+
+**Option 3: GitHub Actions (no CLI needed)**
+- Navigate to Actions tab
+- Run "Sync & Deploy" workflow
+- Waits ~2 minutes for completion
+
+### QR Code Management
+QR codes are auto-generated by `sync.py`:
+- Uses Python `qrcode` library (install: `pip install qrcode[pil]`)
+- Stored in `qr-codes/` directory
+- Automatically adds new tokens, removes deleted tokens, updates existing
+- QR data is the raw token ID (matches keys in `tokens.json`)
+
+**Manual generation:**
+```bash
+python3 generate-qr.py  # Interactive with style options (basic/labeled/colored)
+```
+
+## Testing and Development
 
 ### Local Testing
-1. Use any local web server (e.g., `python3 -m http.server 8000`)
-2. Open browser to `http://localhost:8000`
-3. Test QR scanning with generated codes from `qr-codes/`
+```bash
+# Start local server
+python3 -m http.server 8000
 
-### PWA Testing
-- Install as PWA via browser's "Add to Home Screen"
-- Test offline functionality after caching
-- Verify service worker in DevTools > Application
+# Open browser
+open http://localhost:8000
+
+# Test QR scanning with generated codes from qr-codes/
+```
+
+**PWA Testing:**
+- Install via browser's "Add to Home Screen"
+- Test offline functionality (disconnect network after first load)
+- Verify service worker in DevTools > Application > Service Workers
+- Force cache update by incrementing `CACHE_NAME` in `sw.js:4`
+
+### Service Worker Updates
+When modifying cached files (index.html, config.html, orchestratorIntegration.js):
+1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.2'`)
+2. Deploy changes
+3. Users must close all app tabs and reopen to activate new service worker
+
+## Key Components
+
+### index.html
+Single-page application with embedded JavaScript (~1000 lines):
+- `MemoryScanner` class: Main application logic
+- Token loading with fallback chain
+- QR scanner integration (html5-qrcode library via CDN)
+- Audio/image display logic
+- Collection management (localStorage)
+- Orchestrator integration via `OrchestratorIntegration` class
+
+### js/orchestratorIntegration.js
+Manages backend communication in networked mode:
+- Auto-detects standalone vs networked deployment
+- Connection monitoring with exponential backoff
+- Offline queue management (max 100 transactions)
+- Automatic retry on reconnection
+- LocalStorage persistence for offline scans
+
+### config.html
+Network configuration UI for networked mode:
+- Manual orchestrator URL override
+- Connection status indicator
+- Device ID management
+
+### sw.js
+Service worker for offline PWA functionality:
+- App shell caching strategy
+- External resource caching (QR scanner library)
+- Network-first for token data
+- Cache-first for assets
 
 ## Deployment
 
-### GitHub Pages
+### GitHub Pages (Standalone Mode)
 1. Push to main branch
 2. GitHub Pages serves from root directory
 3. Access at: `https://[username].github.io/[repo-name]/`
+4. Deployment takes ~1-2 minutes
+5. PWA service worker may cache for up to 5 minutes (force refresh to bypass)
+
+**Auto-deployment:**
+- Any push to main triggers deployment
+- Manual workflow trigger via Actions tab
+- `sync.py --deploy` handles the entire flow
+
+### Orchestrator Integration (Networked Mode)
+When served from orchestrator's `/player-scanner/` endpoint:
+- Backend serves static files from this repo (copied to `backend/public/player-scanner/`)
+- Path-based detection enables connection monitoring
+- Video playback triggers orchestrator's video queue
+- Offline scans queued and synced when connection restored
+
+## Common Tasks
+
+### Add New Token
+1. Edit `data/tokens.json`
+2. Add image/audio files to `assets/images/` or `assets/audio/`
+3. Run `python3 sync.py --deploy`
+4. Print QR code from `qr-codes/[token_id].png`
+
+### Update Existing Token Content
+1. Edit token fields in `data/tokens.json`
+2. Replace asset files if needed
+3. Run `python3 sync.py --deploy`
+4. QR codes remain the same (token ID unchanged)
+
+### Remove Token
+1. Delete token entry from `data/tokens.json`
+2. Run `python3 sync.py --deploy` (automatically removes QR code)
+3. Clean up asset files manually if desired
+
+### Sync Multiple Editors' Changes
+```bash
+python3 sync.py --deploy
+# Git automatically merges changes from other contributors
+# Conflicts require manual resolution in data/tokens.json
+```
+
+### Test Orchestrator Integration Locally
+1. Start orchestrator backend (see parent repo)
+2. Ensure backend serves this scanner at `/player-scanner/`
+3. Open `http://localhost:3000/player-scanner/`
+4. Networked mode auto-activates
 
 ## Important Notes
 
-- **No Build Process**: Pure HTML/JS/CSS, no compilation needed
+- **No Build Process**: Pure HTML/JS/CSS, no compilation
 - **External Dependencies**: QR Scanner library loaded from CDN (unpkg.com)
 - **Asset Paths**: All paths relative to support GitHub Pages subdirectory hosting
-- **Token Updates**: Changes to shared tokens require submodule update in both Player and GM scanner apps
+- **Submodule Updates**: Require update in both Player Scanner and GM Scanner repos
+- **Offline Collection**: Stored in localStorage, persists across sessions
+- **Token IDs**: Must match between `tokens.json` keys and QR code data
+- **Video Support**: Videos play via orchestrator only (not in standalone mode)
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Changes not showing on GitHub Pages | Wait 2 minutes, check Actions tab, force refresh (Ctrl+Shift+R) |
+| Can't push to GitHub | Check branch (`git branch`), pull first (`git pull`), retry |
+| Submodule out of sync | `git submodule update --force`, then `python3 sync.py` |
+| QR codes missing | Run `python3 sync.py` to regenerate |
+| Service worker caching old version | Update `CACHE_NAME` in `sw.js`, redeploy, close all tabs |
+| Orchestrator not connecting | Check path (must be `/player-scanner/`), verify backend running |
+| Offline queue not syncing | Check localStorage quota, verify connection restored |
