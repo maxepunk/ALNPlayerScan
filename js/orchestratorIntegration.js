@@ -178,7 +178,13 @@ class OrchestratorIntegration {
 
   async checkConnection() {
     try {
-      const response = await fetch(`${this.baseUrl}/health`, {
+      // Include deviceId in health check for device tracking
+      // This registers the player scanner as a connected device in the orchestrator
+      const healthUrl = new URL(`${this.baseUrl}/health`);
+      healthUrl.searchParams.set('deviceId', this.deviceId);
+      healthUrl.searchParams.set('type', 'player');
+
+      const response = await fetch(healthUrl, {
         method: 'GET',
         cache: 'no-cache',
         signal: AbortSignal.timeout(5000)
