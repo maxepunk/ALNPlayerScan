@@ -14,7 +14,9 @@ class OrchestratorIntegration {
     this.deviceId = localStorage.getItem('device_id') || 'PLAYER_' + Date.now();
 
     // Detect deployment mode (FR:113 - Standalone "never attempts to connect")
-    this.isStandalone = !window.location.pathname.startsWith('/player-scanner/');
+    // Handle both /player-scanner and /player-scanner/ (trailing slash variations)
+    const pathname = window.location.pathname;
+    this.isStandalone = !pathname.startsWith('/player-scanner/') && pathname !== '/player-scanner';
 
     if (!this.isStandalone) {
       // NETWORKED MODE: Connection monitoring + offline queue
@@ -41,7 +43,9 @@ class OrchestratorIntegration {
 
   detectOrchestratorUrl() {
     // If served from orchestrator, use same origin
-    if (window.location.pathname.startsWith('/player-scanner/')) {
+    // Handle both /player-scanner and /player-scanner/ (trailing slash variations)
+    const pathname = window.location.pathname;
+    if (pathname.startsWith('/player-scanner/') || pathname === '/player-scanner') {
       return window.location.origin;
     }
     // Fallback to localhost for development
