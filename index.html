@@ -1082,40 +1082,56 @@
             }
             
             processToken(token) {
-                // Send to orchestrator if connected and token has video
-                if (orchestrator && orchestrator.connected && token.video) {
-                    // Show processing modal
-                    document.getElementById('video-processing').classList.add('active');
-
+                // Send to orchestrator if connected (for ALL token types, not just video)
+                if (orchestrator && orchestrator.connected) {
                     // Get current team from UI or use default (3-digit format per OpenAPI contract)
                     const teamId = sessionStorage.getItem('currentTeam') || '001';
 
-                    // Set timeout IMMEDIATELY to guarantee modal hides (Bug #5 fix)
-                    // Modal will auto-hide after 2.5s regardless of promise state
-                    const modalTimeout = setTimeout(() => {
-                        document.getElementById('video-processing').classList.remove('active');
-                    }, 2500);
+                    // Show video processing modal ONLY for video tokens
+                    if (token.video) {
+                        document.getElementById('video-processing').classList.add('active');
 
-                    // Send to orchestrator
-                    orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
-                        console.log('Orchestrator response:', response);
+                        // Set timeout IMMEDIATELY to guarantee modal hides (Bug #5 fix)
+                        // Modal will auto-hide after 2.5s regardless of promise state
+                        const modalTimeout = setTimeout(() => {
+                            document.getElementById('video-processing').classList.remove('active');
+                        }, 2500);
 
-                        // Check for error or queued status
-                        if (response.status === 'error' && response.error) {
-                            this.showError(response.error);
-                        } else if (response.queued) {
-                            this.showError('Scan queued - orchestrator unavailable');
-                        }
+                        // Send to orchestrator
+                        orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
+                            console.log('Orchestrator response:', response);
 
-                        // Can hide early if we get fast response
-                        clearTimeout(modalTimeout);
-                        document.getElementById('video-processing').classList.remove('active');
-                    }).catch(error => {
-                        console.error('Orchestrator error:', error);
-                        // Hide immediately on error
-                        clearTimeout(modalTimeout);
-                        document.getElementById('video-processing').classList.remove('active');
-                    });
+                            // Check for error or queued status
+                            if (response.status === 'error' && response.error) {
+                                this.showError(response.error);
+                            } else if (response.queued) {
+                                this.showError('Scan queued - orchestrator unavailable');
+                            }
+
+                            // Can hide early if we get fast response
+                            clearTimeout(modalTimeout);
+                            document.getElementById('video-processing').classList.remove('active');
+                        }).catch(error => {
+                            console.error('Orchestrator error:', error);
+                            // Hide immediately on error
+                            clearTimeout(modalTimeout);
+                            document.getElementById('video-processing').classList.remove('active');
+                        });
+                    } else {
+                        // Non-video tokens: send to orchestrator without modal
+                        orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
+                            console.log('Orchestrator response (non-video):', response);
+
+                            // Check for error or queued status
+                            if (response.status === 'error' && response.error) {
+                                this.showError(response.error);
+                            } else if (response.queued) {
+                                this.showError('Scan queued - orchestrator unavailable');
+                            }
+                        }).catch(error => {
+                            console.error('Orchestrator error (non-video):', error);
+                        });
+                    }
                 }
 
                 // Track if new or revisited
@@ -1323,12 +1339,26 @@
     <!-- Orchestrator Integration -->
     <script src="js/orchestratorIntegration.js"></script>
     <script>
-        // Initialize orchestrator
-        let orchestrator = null;
+        // DIAGNOSTIC: Script block executing
+        console.log('[DIAGNOSTIC] Orchestrator initialization script executing');
+        console.log('[DIAGNOSTIC] document.readyState =', document.readyState);
+        console.log('[DIAGNOSTIC] OrchestratorIntegration class available?', typeof OrchestratorIntegration !== 'undefined');
 
-        // Initialize on page load
-        window.addEventListener('DOMContentLoaded', () => {
-            orchestrator = new OrchestratorIntegration();
+        // Initialize orchestrator (attached to window for cross-script access)
+        window.orchestrator = null;
+        console.log('[DIAGNOSTIC] window.orchestrator initialized to null');
+
+        // Initialize orchestrator with readyState check (prevents race condition)
+        function initOrchestrator() {
+            console.log('[DIAGNOSTIC] initOrchestrator() called');
+            try {
+                window.orchestrator = new OrchestratorIntegration();
+                console.log('[DIAGNOSTIC] window.orchestrator created successfully:', window.orchestrator);
+                console.log('[DIAGNOSTIC] window.orchestrator.isStandalone =', window.orchestrator.isStandalone);
+            } catch (error) {
+                console.error('[DIAGNOSTIC] ERROR creating OrchestratorIntegration:', error);
+                throw error;
+            }
 
             // Listen for connection events
             window.addEventListener('orchestrator:connected', () => {
@@ -1340,7 +1370,17 @@
                 document.getElementById('connection-status').classList.remove('connected');
                 document.querySelector('.status-text').textContent = 'Offline';
             });
-        });
+        }
+
+        // Initialize on page load (with readyState check to avoid race condition)
+        console.log('[DIAGNOSTIC] Checking readyState for initialization timing...');
+        if (document.readyState === 'loading') {
+            console.log('[DIAGNOSTIC] DOM still loading, adding DOMContentLoaded listener');
+            document.addEventListener('DOMContentLoaded', initOrchestrator);
+        } else {
+            console.log('[DIAGNOSTIC] DOM already loaded, initializing immediately');
+            initOrchestrator();
+        }
     </script>
 
     <!-- Video Processing Modal -->
