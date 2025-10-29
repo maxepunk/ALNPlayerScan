@@ -49,7 +49,8 @@ class OrchestratorIntegration {
       return window.location.origin;
     }
     // Fallback to localhost for development
-    return 'http://localhost:3000';
+    // HTTPS required for Web NFC API support in GM Scanner
+    return 'https://localhost:3000';
   }
 
   async scanToken(tokenId, teamId) {
