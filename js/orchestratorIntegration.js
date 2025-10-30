@@ -53,6 +53,17 @@ class OrchestratorIntegration {
     return 'https://localhost:3000';
   }
 
+  /**
+   * Normalize URL to use HTTPS protocol (Web NFC API requirement)
+   * @param {string} url - URL to normalize
+   * @returns {string} Normalized URL with https:// protocol
+   */
+  normalizeUrl(url) {
+    if (!url) return url;
+    // Replace http:// with https:// for Web NFC API compatibility
+    return url.replace(/^http:\/\//i, 'https://');
+  }
+
   async scanToken(tokenId, teamId) {
     // STANDALONE MODE: Process locally, never attempt network (FR:113, FR:222)
     if (this.isStandalone) {
@@ -253,8 +264,10 @@ class OrchestratorIntegration {
   }
 
   updateOrchestratorUrl(newUrl) {
-    this.baseUrl = newUrl;
-    localStorage.setItem('orchestrator_url', newUrl);
+    // Normalize to HTTPS for Web NFC API compatibility (Oct 2025 migration)
+    const normalizedUrl = this.normalizeUrl(newUrl);
+    this.baseUrl = normalizedUrl;
+    localStorage.setItem('orchestrator_url', normalizedUrl);
     this.checkConnection(); // Test new URL immediately
   }
 
