@@ -85,6 +85,7 @@ class OrchestratorIntegration {
           tokenId,
           ...(teamId && { teamId }),  // Only include if truthy (contract: optional string, not null)
           deviceId: this.deviceId,
+          deviceType: 'player',  // P2.1: Device-type-specific behavior
           timestamp: new Date().toISOString()
         })
       });
@@ -157,15 +158,20 @@ class OrchestratorIntegration {
     console.log(`Processing ${this.offlineQueue.length} offline transactions...`);
     const batch = this.offlineQueue.splice(0, 10); // Process up to 10 at a time
 
+    // P2.1: Generate batchId for idempotency
+    const batchId = this.generateBatchId();
+
     try {
       const response = await fetch(`${this.baseUrl}/api/scan/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          batchId,  // P2.1: Idempotency key
           transactions: batch.map(item => ({
             tokenId: item.tokenId,
             teamId: item.teamId,
             deviceId: this.deviceId,
+            deviceType: 'player',  // P2.1: Device-type-specific behavior
             timestamp: new Date(item.timestamp).toISOString()
           }))
         })
@@ -284,6 +290,20 @@ class OrchestratorIntegration {
     this.offlineQueue = [];
     this.saveQueue();
     console.log('Offline queue cleared');
+  }
+
+  /**
+   * Generate a unique batch ID for idempotent batch uploads
+   * Uses simple UUID v4 generation (random)
+   * @returns {string} UUID v4 format batch ID
+   */
+  generateBatchId() {
+    // Simple UUID v4 generation: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   async destroy() {
