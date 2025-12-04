@@ -16,15 +16,37 @@ The scanner detects its deployment context automatically:
 - **Standalone**: Served from GitHub Pages (any path except `/player-scanner/`)
 - **Networked**: Served from orchestrator at `/player-scanner/` path
 
-Detection in `js/orchestratorIntegration.js:17`:
+Detection in `js/orchestratorIntegration.js:19`:
 ```javascript
-this.isStandalone = !window.location.pathname.startsWith('/player-scanner/');
+const pathname = window.location.pathname;
+this.isStandalone = !pathname.startsWith('/player-scanner/') && pathname !== '/player-scanner';
 ```
 
 **Implications:**
 - Standalone mode NEVER attempts orchestrator connection (no monitoring, no queue)
 - Networked mode enables connection monitoring and offline queue management
 - Mode cannot be manually configured - purely path-based detection
+- Handles both `/player-scanner` and `/player-scanner/` (trailing slash variations)
+
+### HTTPS Requirement
+Web NFC API requires secure context. URLs are automatically normalized to HTTPS:
+```javascript
+normalizeUrl(url) {
+  return url.replace(/^http:\/\//i, 'https://');
+}
+```
+
+### Scan Request Format
+All scans to orchestrator include `deviceType` field for duplicate detection:
+```javascript
+{
+  tokenId: 'token123',
+  teamId: '001',  // Optional
+  deviceId: this.deviceId,
+  deviceType: 'player',  // REQUIRED - identifies scanner type
+  timestamp: new Date().toISOString()
+}
+```
 
 ### Token Data Synchronization Architecture
 
@@ -160,11 +182,13 @@ Single-page application with embedded JavaScript (~1000 lines):
 
 ### js/orchestratorIntegration.js
 Manages backend communication in networked mode:
-- Auto-detects standalone vs networked deployment
+- Auto-detects standalone vs networked deployment (path-based, handles trailing slash)
 - Connection monitoring with exponential backoff
 - Offline queue management (max 100 transactions)
 - Automatic retry on reconnection
 - LocalStorage persistence for offline scans
+- HTTPS URL normalization for Web NFC compatibility
+- Sends `deviceType: 'player'` with all scan requests
 
 ### config.html
 Network configuration UI for networked mode:
@@ -241,6 +265,9 @@ python3 sync.py --deploy
 - **Offline Collection**: Stored in localStorage, persists across sessions
 - **Token IDs**: Must match between `tokens.json` keys and QR code data
 - **Video Support**: Videos play via orchestrator only (not in standalone mode)
+- **HTTPS Required**: Web NFC API requires secure context; URLs auto-normalized to HTTPS
+- **deviceType Field**: All scans include `deviceType: 'player'` for backend duplicate detection
+- **NeurAI Display BMPs**: Notion sync auto-generates 240x320 BMP images with red branding from description text
 
 ## Troubleshooting
 
