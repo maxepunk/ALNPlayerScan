@@ -1,0 +1,130 @@
+/**
+ * NeurAI Design System - CSS Custom Properties
+ * Player Scanner PWA Theme Variables
+ */
+
+:root {
+  /* ═══════════════════════════════════════════════════════
+     NeurAI Brand Colors
+     ═══════════════════════════════════════════════════════ */
+  --neurai-bg-primary: #0a0a0a;
+  --neurai-bg-secondary: #111111;
+  --neurai-bg-elevated: #1a1a1a;
+  --neurai-bg-overlay: rgba(0, 0, 0, 0.95);
+
+  --neurai-accent-primary: #CC0000;
+  --neurai-accent-secondary: #FF3333;
+  --neurai-accent-hover: #990000;
+  --neurai-accent-glow: rgba(204, 0, 0, 0.4);
+  --neurai-accent-subtle: rgba(204, 0, 0, 0.15);
+
+  /* Text Colors */
+  --neurai-text-primary: #ffffff;
+  --neurai-text-secondary: #a0a0a0;
+  --neurai-text-muted: #666666;
+  --neurai-text-accent: #CC0000;
+
+  /* Status Colors */
+  --neurai-success: #4CAF50;
+  --neurai-success-bg: rgba(76, 175, 80, 0.2);
+  --neurai-error: #CC0000;
+  --neurai-error-bg: rgba(204, 0, 0, 0.2);
+  --neurai-warning: #FF9800;
+  --neurai-warning-bg: rgba(255, 152, 0, 0.2);
+
+  /* ═══════════════════════════════════════════════════════
+     Typography
+     ═══════════════════════════════════════════════════════ */
+  --font-display: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.25rem;   /* 20px */
+  --font-size-xl: 1.5rem;    /* 24px */
+  --font-size-2xl: 2rem;     /* 32px */
+  --font-size-3xl: 2.5rem;   /* 40px */
+  --font-size-4xl: 3rem;     /* 48px */
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.1;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.05em;
+  --letter-spacing-wider: 0.1em;
+  --letter-spacing-widest: 0.25em;
+
+  /* ═══════════════════════════════════════════════════════
+     Spacing
+     ═══════════════════════════════════════════════════════ */
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;    /* 8px */
+  --spacing-md: 1rem;      /* 16px */
+  --spacing-lg: 1.5rem;    /* 24px */
+  --spacing-xl: 2rem;      /* 32px */
+  --spacing-2xl: 3rem;     /* 48px */
+
+  /* ═══════════════════════════════════════════════════════
+     Border Radius
+     ═══════════════════════════════════════════════════════ */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* ═══════════════════════════════════════════════════════
+     Shadows
+     ═══════════════════════════════════════════════════════ */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 20px var(--neurai-accent-glow);
+  --shadow-glow-intense: 0 0 40px var(--neurai-accent-glow);
+
+  /* ═══════════════════════════════════════════════════════
+     Borders
+     ═══════════════════════════════════════════════════════ */
+  --border-subtle: 1px solid rgba(255, 255, 255, 0.1);
+  --border-accent: 2px solid var(--neurai-accent-primary);
+  --border-error: 1px solid var(--neurai-error);
+  --border-success: 1px solid var(--neurai-success);
+
+  /* ═══════════════════════════════════════════════════════
+     Transitions
+     ═══════════════════════════════════════════════════════ */
+  --transition-fast: 150ms ease;
+  --transition-normal: 300ms ease;
+  --transition-slow: 500ms ease;
+
+  /* ═══════════════════════════════════════════════════════
+     Z-Index Scale
+     ═══════════════════════════════════════════════════════ */
+  --z-base: 0;
+  --z-elevated: 10;
+  --z-sticky: 100;
+  --z-overlay: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reduced Motion Preferences
+   ═══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --transition-normal: 0ms;
+    --transition-slow: 0ms;
+  }
+}

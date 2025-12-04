@@ -3,627 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#1a1a2e">
-    <title>ALN Memory Scanner</title>
-    
+    <meta name="theme-color" content="#0a0a0a">
+    <title>NeurAI Memory Scanner</title>
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%234fbdba' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='50' font-size='60' text-anchor='middle' dominant-baseline='middle'%3E🧠%3C/text%3E%3C/svg%3E">
-    
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow-x: hidden;
-        }
-        
-        .header {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px 20px;
-            text-align: center;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-        }
-        
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-            color: #4fbdba;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-        
-        .header .subtitle {
-            font-size: 14px;
-            opacity: 0.8;
-        }
-        
-        .main-container {
-            flex: 1;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-        
-        /* Loading State */
-        .loading {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .spinner {
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #4fbdba;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Scanner States */
-        .scanner-container {
-            width: 100%;
-            max-width: 400px;
-            position: relative;
-            display: none;
-        }
-        
-        .scanner-container.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
-        
-        #scanner-video {
-            width: 100%;
-            border-radius: 15px;
-            background: #000;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-        
-        .scanner-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            border: 3px solid #4fbdba;
-            border-radius: 15px;
-            pointer-events: none;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .scanner-overlay::before,
-        .scanner-overlay::after,
-        .scanner-overlay span::before,
-        .scanner-overlay span::after {
-            content: '';
-            position: absolute;
-            width: 30px;
-            height: 30px;
-            border: 3px solid #4fbdba;
-        }
-        
-        .scanner-overlay::before {
-            top: -3px;
-            left: -3px;
-            border-right: none;
-            border-bottom: none;
-            border-radius: 15px 0 0 0;
-        }
-        
-        .scanner-overlay::after {
-            top: -3px;
-            right: -3px;
-            border-left: none;
-            border-bottom: none;
-            border-radius: 0 15px 0 0;
-        }
-        
-        .scanner-overlay span::before {
-            bottom: -3px;
-            left: -3px;
-            border-right: none;
-            border-top: none;
-            border-radius: 0 0 0 15px;
-        }
-        
-        .scanner-overlay span::after {
-            bottom: -3px;
-            right: -3px;
-            border-left: none;
-            border-top: none;
-            border-radius: 0 0 15px 0;
-        }
-        
-        /* Welcome Screen */
-        .welcome-screen {
-            text-align: center;
-            padding: 20px;
-            max-width: 400px;
-            animation: fadeIn 0.5s;
-        }
-        
-        .welcome-screen.hidden {
-            display: none;
-        }
-        
-        .logo {
-            width: 120px;
-            height: 120px;
-            background: linear-gradient(135deg, #4fbdba, #7ec8e3);
-            border-radius: 30px;
-            margin: 0 auto 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 60px;
-            box-shadow: 0 10px 30px rgba(79, 189, 186, 0.3);
-            animation: float 3s ease-in-out infinite;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        /* Memory Display */
-        .memory-display {
-            display: none;
-            text-align: center;
-            width: 100%;
-            max-width: 400px;
-        }
-        
-        .memory-display.active {
-            display: block;
-            animation: fadeIn 0.5s;
-        }
-        
-        .memory-image {
-            width: 100%;
-            max-width: 350px;
-            height: 350px;
-            object-fit: cover;
-            border-radius: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
-            background: #2a2a3e;
-        }
-        
-        .memory-image.loading {
-            background: linear-gradient(90deg, #2a2a3e 0%, #3a3a4e 50%, #2a2a3e 100%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-        }
-        
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
-        
-        .memory-info {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 20px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        /* Audio-only placeholder */
-        .audio-placeholder {
-            width: 100%;
-            max-width: 350px;
-            height: 350px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #2a2a3e, #3a3a4e);
-            border-radius: 20px;
-            margin-bottom: 20px;
-            font-size: 80px;
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
-        }
-        
-        .memory-status {
-            font-size: 16px;
-            color: #4fbdba;
-            margin: 10px 0;
-            font-weight: 500;
-        }
-        
-        /* Buttons */
-        .btn {
-            background: linear-gradient(135deg, #4fbdba, #7ec8e3);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 30px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin: 10px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            box-shadow: 0 5px 15px rgba(79, 189, 186, 0.3);
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(79, 189, 186, 0.4);
-        }
-        
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        .btn.secondary {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .btn.danger {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
-            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.3);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        /* Status Messages */
-        .status {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 12px 24px;
-            border-radius: 12px;
-            margin: 20px 0;
-            text-align: center;
-            backdrop-filter: blur(10px);
-            font-size: 14px;
-        }
-        
-        .status.success {
-            background: rgba(46, 204, 113, 0.2);
-            border: 1px solid rgba(46, 204, 113, 0.5);
-        }
-        
-        .status.error {
-            background: rgba(231, 76, 60, 0.2);
-            border: 1px solid rgba(231, 76, 60, 0.5);
-        }
-        
-        .status.scanning {
-            animation: pulse 2s infinite;
-        }
-        
-        /* Removed stats display - player only sees media */
-        
-        /* Manual Entry Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            backdrop-filter: blur(5px);
-        }
-        
-        .modal.active {
-            display: flex;
-            animation: fadeIn 0.3s;
-        }
-        
-        .modal-content {
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            padding: 30px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 400px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-        }
-        
-        .modal-content h3 {
-            margin-bottom: 20px;
-            color: #4fbdba;
-        }
-        
-        .modal-content input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border-radius: 10px;
-            font-size: 16px;
-            margin-bottom: 20px;
-            transition: all 0.3s;
-        }
-        
-        .modal-content input:focus {
-            outline: none;
-            border-color: #4fbdba;
-            background: rgba(255, 255, 255, 0.15);
-        }
-        
-        .modal-content input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { 
-                opacity: 0; 
-                transform: translateY(20px); 
-            }
-            to { 
-                opacity: 1; 
-                transform: translateY(0); 
-            }
-        }
-        
-        /* Audio Controls */
-        .audio-controls {
-            margin: 20px 0;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 15px;
-            display: none;
-        }
-        
-        .audio-controls.active {
-            display: block;
-        }
-        
-        .audio-controls button {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 14px;
-            margin: 0 5px;
-        }
-        
-        .audio-controls button:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-        
-        /* Collection Progress */
-        .collection-progress {
-            margin: 20px 0;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 15px;
-        }
-        
-        .progress-bar {
-            height: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4fbdba, #7ec8e3);
-            border-radius: 4px;
-            transition: width 0.5s ease;
-        }
-        
-        /* Install Prompt */
-        .install-prompt {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.95);
-            padding: 20px;
-            border-radius: 15px;
-            display: none;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(79, 189, 186, 0.5);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-        
-        .install-prompt.show {
-            display: block;
-            animation: slideUp 0.3s;
-        }
-        
-        @keyframes slideUp {
-            from { transform: translateY(100px); }
-            to { transform: translateY(0); }
-        }
-        
-        /* Responsive Design */
-        @media (max-width: 480px) {
-            .header h1 {
-                font-size: 20px;
-            }
-            
-            .btn {
-                padding: 12px 24px;
-                font-size: 14px;
-            }
-            
-            .stats {
-                top: auto;
-                bottom: 20px;
-                right: 20px;
-            }
-            
-            .memory-image {
-                height: 300px;
-            }
-        }
-        
-        /* Error State */
-        .error-message {
-            background: rgba(231, 76, 60, 0.1);
-            border: 1px solid rgba(231, 76, 60, 0.5);
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        /* NFC Indicator */
-        .nfc-indicator {
-            position: fixed;
-            top: 80px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            backdrop-filter: blur(10px);
-            display: none;
-        }
-        
-        .nfc-indicator.active {
-            display: block;
-            animation: fadeIn 0.3s;
-        }
-        
-        .nfc-indicator.scanning {
-            border: 1px solid #4fbdba;
-            animation: pulse 2s infinite;
-        }
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23CC0000' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='50' font-size='60' text-anchor='middle' dominant-baseline='middle'%3E🧠%3C/text%3E%3C/svg%3E">
 
-        /* Orchestrator Connection Indicator */
-        .connection-status {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 8px 12px;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-        }
+    <!-- NeurAI Modular CSS -->
+    <link rel="stylesheet" href="styles/main.css">
 
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #f44336;
-            transition: background 0.3s;
-        }
-
-        .connection-status.connected .status-dot {
-            background: #4CAF50;
-            animation: pulse 2s infinite;
-        }
-
-        .connection-status.connected .status-text {
-            color: #4CAF50;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .config-link {
-            text-decoration: none;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-        }
-
-        .config-link:hover {
-            opacity: 1;
-        }
-
-        /* Video Processing Modal */
-        #video-processing {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 2000;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #video-processing.active {
-            display: flex;
-        }
-
-        .processing-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 40px;
-            border-radius: 20px;
-            text-align: center;
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from { transform: translateY(-50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .processing-spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </head>
 <body>
     <div class="header">
-        <h1>🧠 ALN Memory Scanner</h1>
-        <div class="subtitle">Collect Memory Tokens</div>
+        <h1><span class="brand-text">N E U R A I</span></h1>
+        <div class="subtitle">Memory Scanner</div>
 
         <!-- Orchestrator Connection Status -->
         <div id="connection-status" class="connection-status">
@@ -1088,15 +482,15 @@
                     // Get current team from UI or use default (3-digit format per OpenAPI contract)
                     const teamId = sessionStorage.getItem('currentTeam') || '001';
 
-                    // Show video processing modal ONLY for video tokens
+                    // Show video alert ONLY for video tokens
                     if (token.video) {
-                        document.getElementById('video-processing').classList.add('active');
+                        this.showVideoAlert();
 
-                        // Set timeout IMMEDIATELY to guarantee modal hides (Bug #5 fix)
-                        // Modal will auto-hide after 2.5s regardless of promise state
-                        const modalTimeout = setTimeout(() => {
-                            document.getElementById('video-processing').classList.remove('active');
-                        }, 2500);
+                        // Set timeout IMMEDIATELY to guarantee alert hides
+                        // Alert will auto-hide after 5s for player to notice
+                        const alertTimeout = setTimeout(() => {
+                            this.hideVideoAlert();
+                        }, 5000);
 
                         // Send to orchestrator
                         orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
@@ -1109,17 +503,13 @@
                                 this.showError('Scan queued - orchestrator unavailable');
                             }
 
-                            // Can hide early if we get fast response
-                            clearTimeout(modalTimeout);
-                            document.getElementById('video-processing').classList.remove('active');
+                            // Alert stays visible for full 5 seconds - no early dismissal
                         }).catch(error => {
                             console.error('Orchestrator error:', error);
-                            // Hide immediately on error
-                            clearTimeout(modalTimeout);
-                            document.getElementById('video-processing').classList.remove('active');
+                            // On error, keep alert visible - player should still look at screen
                         });
                     } else {
-                        // Non-video tokens: send to orchestrator without modal
+                        // Non-video tokens: send to orchestrator without alert
                         orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
                             console.log('Orchestrator response (non-video):', response);
 
@@ -1283,10 +673,35 @@
                 errorDiv.className = 'error-message';
                 errorDiv.textContent = message;
                 document.querySelector('.main-container').appendChild(errorDiv);
-                
+
                 setTimeout(() => {
                     errorDiv.remove();
                 }, 3000);
+            }
+
+            showVideoAlert() {
+                const alert = document.getElementById('video-alert');
+                alert.classList.add('active');
+
+                // Haptic feedback - dramatic pattern for video alert
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200, 100, 400]);
+                }
+
+                console.log('📺 Video alert shown - LOOK AT THE VIDEO SCREEN');
+            }
+
+            hideVideoAlert() {
+                const alert = document.getElementById('video-alert');
+                // Add exiting class for exit animation
+                alert.classList.add('exiting');
+
+                // Remove after animation completes
+                setTimeout(() => {
+                    alert.classList.remove('active', 'exiting');
+                }, 300);
+
+                console.log('📺 Video alert hidden');
             }
             
             isIOS() {
@@ -1384,12 +799,19 @@
         }
     </script>
 
-    <!-- Video Processing Modal -->
-    <div id="video-processing">
-        <div class="processing-content">
-            <h2>🎬 Memory Processing...</h2>
-            <div class="processing-spinner"></div>
-            <p>Sending to main display</p>
+    <!-- Video Alert - Dramatic Full-Screen Notification -->
+    <div id="video-alert" class="video-alert">
+        <div class="video-alert__backdrop"></div>
+        <div class="video-alert__content">
+            <div class="video-alert__icon">📺</div>
+            <h1 class="video-alert__title">
+                <span class="glitch" data-text="VIDEO MEMORY">VIDEO MEMORY</span>
+            </h1>
+            <h2 class="video-alert__subtitle">
+                <span class="glitch" data-text="TRIGGERED">TRIGGERED</span>
+            </h2>
+            <div class="video-alert__pulse-ring"></div>
+            <p class="video-alert__hint">Rendering on video screen...</p>
         </div>
     </div>
 </body>

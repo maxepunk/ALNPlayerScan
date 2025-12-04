@@ -1,0 +1,19 @@
+/**
+ * Main CSS - Master Import File
+ * NeurAI Player Scanner PWA
+ *
+ * Import order matters for proper cascade:
+ * 1. Variables (design tokens)
+ * 2. Base (reset, typography)
+ * 3. Animations (keyframes)
+ * 4. Layout (structure, containers)
+ * 5. Components (buttons, cards, modals)
+ * 6. Screens (screen-specific styles)
+ */
+
+@import 'variables.css';
+@import 'base.css';
+@import 'animations.css';
+@import 'layout.css';
+@import 'components.css';
+@import 'screens.css';
