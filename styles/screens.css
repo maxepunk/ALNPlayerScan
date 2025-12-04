@@ -1,0 +1,241 @@
+/**
+ * Screens - Screen-specific styles and transitions
+ * NeurAI Player Scanner PWA
+ */
+
+/* ═══════════════════════════════════════════════════════
+   Screen Transitions
+   ═══════════════════════════════════════════════════════ */
+
+.welcome-screen,
+.scanner-container,
+.memory-display {
+  transition: opacity var(--transition-normal) ease;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Loading Screen Enhancements
+   ═══════════════════════════════════════════════════════ */
+
+#loadingScreen {
+  position: relative;
+}
+
+#loadingScreen::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 100px;
+  border: 2px solid var(--neurai-accent-primary);
+  border-radius: 50%;
+  opacity: 0.2;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Welcome Screen Enhancements
+   ═══════════════════════════════════════════════════════ */
+
+#welcomeScreen {
+  position: relative;
+}
+
+/* Decorative corner accents */
+#welcomeScreen::before,
+#welcomeScreen::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--neurai-accent-primary);
+  opacity: 0.3;
+}
+
+#welcomeScreen::before {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+#welcomeScreen::after {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
+#scanMethodInfo {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xs);
+  color: var(--neurai-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  margin-top: var(--spacing-lg);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Scanner Screen Enhancements
+   ═══════════════════════════════════════════════════════ */
+
+#scannerContainer {
+  position: relative;
+}
+
+/* Scanning status styling */
+#scannerContainer .status {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  border: 1px solid var(--neurai-accent-primary);
+}
+
+/* NFC mode indicator */
+#scannerContainer .status.nfc-mode {
+  background: var(--neurai-accent-subtle);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Memory Display Enhancements
+   ═══════════════════════════════════════════════════════ */
+
+#memoryDisplay h2 {
+  position: relative;
+  display: inline-block;
+}
+
+#memoryDisplay h2::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 2px;
+  background: var(--neurai-accent-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Memory status with icon styling */
+#memoryStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+#memoryStatus.new-memory {
+  color: var(--neurai-accent-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Manual Entry Modal Enhancements
+   ═══════════════════════════════════════════════════════ */
+
+#manualEntryModal .modal-content {
+  background: var(--neurai-bg-primary);
+  border: 2px solid var(--neurai-accent-primary);
+  box-shadow: var(--shadow-xl), var(--shadow-glow);
+}
+
+#manualEntryModal .modal-content::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent,
+    var(--neurai-accent-primary),
+    transparent
+  );
+}
+
+#manualTokenId {
+  font-family: var(--font-display);
+  text-transform: lowercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Collection View Styles
+   ═══════════════════════════════════════════════════════ */
+
+.collection-view {
+  background: var(--neurai-bg-elevated);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-lg);
+  border: var(--border-subtle);
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.collection-item {
+  aspect-ratio: 1;
+  background: var(--neurai-bg-secondary);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.collection-item.collected {
+  border-color: var(--neurai-accent-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.collection-item:not(.collected) {
+  opacity: 0.3;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Screen-Specific Responsive Adjustments
+   ═══════════════════════════════════════════════════════ */
+
+@media (max-width: 480px) {
+  #welcomeScreen::before,
+  #welcomeScreen::after {
+    width: 30px;
+    height: 30px;
+  }
+
+  #memoryDisplay h2::after {
+    width: 40px;
+  }
+
+  .collection-grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  #welcomeScreen::before,
+  #welcomeScreen::after {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Dark Mode Enhancement (default is already dark)
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-color-scheme: light) {
+  /* Scanner stays dark even in light mode for the immersive experience */
+  body {
+    background: var(--neurai-bg-primary);
+  }
+}

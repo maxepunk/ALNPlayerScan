@@ -1,0 +1,288 @@
+/**
+ * Animations - Keyframes and Animation Utilities
+ * NeurAI Player Scanner PWA
+ */
+
+/* ═══════════════════════════════════════════════════════
+   Basic Animations
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Video Alert Animations - Dramatic Effects
+   ═══════════════════════════════════════════════════════ */
+
+/* Screen shake on alert appearance */
+@keyframes screen-shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-8px) rotate(-1deg); }
+  20% { transform: translateX(8px) rotate(1deg); }
+  30% { transform: translateX(-6px) rotate(-0.5deg); }
+  40% { transform: translateX(6px) rotate(0.5deg); }
+  50% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  70% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+  90% { transform: translateX(-1px); }
+}
+
+/* Glitch effect - Layer 1 (Cyan shift) */
+@keyframes glitch-1 {
+  0%, 100% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+  10% {
+    clip-path: inset(20% 0 60% 0);
+    transform: translate(-3px, 2px);
+  }
+  20% {
+    clip-path: inset(50% 0 30% 0);
+    transform: translate(3px, -2px);
+  }
+  30% {
+    clip-path: inset(10% 0 70% 0);
+    transform: translate(-2px, 1px);
+  }
+  40% {
+    clip-path: inset(80% 0 5% 0);
+    transform: translate(2px, -1px);
+  }
+  50% {
+    clip-path: inset(30% 0 50% 0);
+    transform: translate(-3px, 2px);
+  }
+  60% {
+    clip-path: inset(70% 0 10% 0);
+    transform: translate(3px, -2px);
+  }
+  70% {
+    clip-path: inset(5% 0 85% 0);
+    transform: translate(-1px, 1px);
+  }
+  80% {
+    clip-path: inset(45% 0 40% 0);
+    transform: translate(1px, -1px);
+  }
+  90% {
+    clip-path: inset(60% 0 20% 0);
+    transform: translate(-2px, 2px);
+  }
+}
+
+/* Glitch effect - Layer 2 (Red shift) */
+@keyframes glitch-2 {
+  0%, 100% {
+    clip-path: inset(0 0 0 0);
+    transform: translate(0);
+  }
+  10% {
+    clip-path: inset(40% 0 40% 0);
+    transform: translate(3px, -2px);
+  }
+  20% {
+    clip-path: inset(10% 0 80% 0);
+    transform: translate(-3px, 2px);
+  }
+  30% {
+    clip-path: inset(70% 0 15% 0);
+    transform: translate(2px, -1px);
+  }
+  40% {
+    clip-path: inset(25% 0 55% 0);
+    transform: translate(-2px, 1px);
+  }
+  50% {
+    clip-path: inset(55% 0 30% 0);
+    transform: translate(3px, -2px);
+  }
+  60% {
+    clip-path: inset(5% 0 80% 0);
+    transform: translate(-3px, 2px);
+  }
+  70% {
+    clip-path: inset(85% 0 5% 0);
+    transform: translate(1px, -1px);
+  }
+  80% {
+    clip-path: inset(35% 0 50% 0);
+    transform: translate(-1px, 1px);
+  }
+  90% {
+    clip-path: inset(15% 0 70% 0);
+    transform: translate(2px, -2px);
+  }
+}
+
+/* Expanding pulse ring */
+@keyframes pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Text flicker effect */
+@keyframes text-flicker {
+  0%, 100% { opacity: 1; }
+  3% { opacity: 0.8; }
+  6% { opacity: 1; }
+  8% { opacity: 0.9; }
+  10% { opacity: 1; }
+  50% { opacity: 1; }
+  52% { opacity: 0.85; }
+  54% { opacity: 1; }
+  56% { opacity: 0.9; }
+  58% { opacity: 1; }
+}
+
+/* CRT scanline drift */
+@keyframes scanline-drift {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* Icon glow pulse */
+@keyframes icon-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px var(--neurai-accent-glow));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 30px var(--neurai-accent-primary)) drop-shadow(0 0 60px var(--neurai-accent-glow));
+    transform: scale(1.05);
+  }
+}
+
+/* Alert entrance */
+@keyframes alert-entrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Alert exit */
+@keyframes alert-exit {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Animation Utility Classes
+   ═══════════════════════════════════════════════════════ */
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--neurai-bg-elevated) 0%, var(--neurai-bg-secondary) 50%, var(--neurai-bg-elevated) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reduced Motion - Disable complex animations
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-spin,
+  .animate-pulse,
+  .animate-float,
+  .animate-shimmer {
+    animation: none !important;
+  }
+}

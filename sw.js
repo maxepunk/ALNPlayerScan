@@ -1,15 +1,23 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.0.0 - Update this when making changes
+// Version 1.2.0 - NeurAI branding + modular CSS architecture
 
-const CACHE_NAME = 'aln-scanner-v1.1';  // Updated for orchestrator integration
+const CACHE_NAME = 'aln-scanner-v1.2';  // Updated for NeurAI frontend upgrade
 const APP_SHELL = [
   './',
   './index.html',
-  './config.html',  // Orchestrator configuration page
+  './config.html',
   './manifest.json',
   './tokens.json',
   './assets/images/placeholder.jpg',
-  './js/orchestratorIntegration.js'  // Orchestrator client
+  './js/orchestratorIntegration.js',
+  // Modular CSS architecture
+  './styles/main.css',
+  './styles/variables.css',
+  './styles/base.css',
+  './styles/animations.css',
+  './styles/layout.css',
+  './styles/components.css',
+  './styles/screens.css'
 ];
 
 const EXTERNAL_RESOURCES = [
@@ -237,4 +245,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.0.0 loaded');
+console.log('[Service Worker] Version 1.2.0 loaded - NeurAI branding');
