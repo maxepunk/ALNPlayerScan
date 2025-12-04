@@ -1082,8 +1082,9 @@
             }
             
             processToken(token) {
-                // Send to orchestrator if connected (for ALL token types, not just video)
-                if (orchestrator && orchestrator.connected) {
+                // Send to orchestrator in networked mode (for ALL token types, not just video)
+                // Check isStandalone, NOT connected - scanToken() handles offline queueing internally
+                if (orchestrator && !orchestrator.isStandalone) {
                     // Get current team from UI or use default (3-digit format per OpenAPI contract)
                     const teamId = sessionStorage.getItem('currentTeam') || '001';
 
