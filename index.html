@@ -673,7 +673,8 @@
                 }
             }
 
-            
+
+            // Debug/console utility - no UI calls this directly
             playAudio() {
                 if (this.currentAudio) {
                     this.currentAudio.play();
@@ -691,6 +692,12 @@
             continueScan() {
                 // Stop any playing audio
                 this.stopAudio();
+
+                // Clean up audio event handler to prevent stale callbacks
+                const audio = document.getElementById('memoryAudio');
+                if (audio) {
+                    audio.onended = null;
+                }
 
                 // Hide audio indicator
                 const audioIndicator = document.getElementById('audioIndicator');
