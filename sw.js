@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.2.0 - NeurAI branding + modular CSS architecture
+// Version 1.3.0 - Full-bleed immersive memory display
 
-const CACHE_NAME = 'aln-scanner-v1.2';  // Updated for NeurAI frontend upgrade
+const CACHE_NAME = 'aln-scanner-v1.3';  // Updated for immersive memory display
 const APP_SHELL = [
   './',
   './index.html',
@@ -17,7 +17,8 @@ const APP_SHELL = [
   './styles/animations.css',
   './styles/layout.css',
   './styles/components.css',
-  './styles/screens.css'
+  './styles/screens.css',
+  './styles/memory-display.css'
 ];
 
 const EXTERNAL_RESOURCES = [
@@ -245,4 +246,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.2.0 loaded - NeurAI branding');
+console.log('[Service Worker] Version 1.3.0 loaded - Full-bleed immersive memory display');

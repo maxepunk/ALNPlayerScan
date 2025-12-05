@@ -219,62 +219,8 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   Memory Display
+   Memory Display - MOVED TO memory-display.css
    ═══════════════════════════════════════════════════════ */
-
-.memory-display {
-  display: none;
-  text-align: center;
-  width: 100%;
-  max-width: 400px;
-}
-
-.memory-display.active {
-  display: block;
-  animation: fadeIn 0.5s ease;
-}
-
-.memory-display h2 {
-  font-family: var(--font-display);
-  font-size: var(--font-size-lg);
-  color: var(--neurai-text-primary);
-  margin-bottom: var(--spacing-sm);
-  letter-spacing: var(--letter-spacing-wide);
-}
-
-.memory-image {
-  width: 100%;
-  max-width: 350px;
-  height: 350px;
-  object-fit: cover;
-  border-radius: var(--radius-xl);
-  margin-bottom: var(--spacing-lg);
-  box-shadow: var(--shadow-xl);
-  background: var(--neurai-bg-elevated);
-  border: 2px solid var(--neurai-accent-primary);
-}
-
-.memory-image.loading {
-  background: linear-gradient(90deg, var(--neurai-bg-elevated) 0%, var(--neurai-bg-secondary) 50%, var(--neurai-bg-elevated) 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-/* Audio-only placeholder */
-.audio-placeholder {
-  width: 100%;
-  max-width: 350px;
-  height: 350px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--neurai-bg-elevated);
-  border: 2px solid var(--neurai-accent-primary);
-  border-radius: var(--radius-xl);
-  margin-bottom: var(--spacing-lg);
-  font-size: 80px;
-  box-shadow: var(--shadow-xl), var(--shadow-glow);
-}
 
 /* ═══════════════════════════════════════════════════════
    Responsive Layout Adjustments
@@ -287,11 +233,6 @@
 
   .main-container {
     padding: var(--spacing-md);
-  }
-
-  .memory-image,
-  .audio-placeholder {
-    height: 300px;
   }
 
   .logo {
@@ -307,14 +248,7 @@
   }
 
   .scanner-container,
-  .memory-display,
   .welcome-screen {
     max-width: 500px;
-  }
-
-  .memory-image,
-  .audio-placeholder {
-    height: 400px;
-    max-width: 400px;
   }
 }

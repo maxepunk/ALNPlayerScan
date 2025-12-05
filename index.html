@@ -63,29 +63,42 @@
             </button>
         </div>
         
-        <!-- Memory Display -->
+        <!-- Memory Display - Full-Bleed Immersive -->
         <div class="memory-display" id="memoryDisplay">
-            <h2>Memory Unlocked</h2>
-            <div class="memory-status" id="memoryStatus"></div>
-            
-            <!-- Image display or audio placeholder -->
-            <img class="memory-image" id="memoryImage" src="" alt="Memory" style="display: none;">
-            <div class="audio-placeholder" id="audioPlaceholder" style="display: none;">🎵</div>
-            
-            <div class="audio-controls" id="audioControls">
-                <button onclick="app.playAudio()">▶️ Play Audio</button>
-                <button onclick="app.stopAudio()">⏹️ Stop</button>
+            <!-- Tap anywhere to continue -->
+            <div class="memory-tap-target" id="memoryTapTarget"></div>
+
+            <!-- Status Overlay (auto-fades after 3s) -->
+            <div class="memory-status-overlay" id="memoryStatusOverlay">
+                <h2>Memory Unlocked</h2>
+                <div class="memory-status" id="memoryStatus"></div>
             </div>
-            
+
+            <!-- Image Container -->
+            <div class="memory-image-container">
+                <img class="memory-image" id="memoryImage" src="" alt="Memory" style="display: none;">
+                <div class="audio-placeholder" id="audioPlaceholder">
+                    <span class="audio-placeholder__icon">🎵</span>
+                    <span class="audio-placeholder__text">Audio Memory</span>
+                </div>
+            </div>
+
+            <!-- Audio Indicator (visible when audio playing) -->
+            <div class="audio-indicator" id="audioIndicator">
+                <span class="audio-indicator__icon">🔊</span>
+                <div class="audio-indicator__bars">
+                    <div class="audio-indicator__bar"></div>
+                    <div class="audio-indicator__bar"></div>
+                    <div class="audio-indicator__bar"></div>
+                    <div class="audio-indicator__bar"></div>
+                </div>
+            </div>
+
+            <!-- Continue Hint -->
+            <div class="continue-hint" id="continueHint">Tap to continue</div>
+
+            <!-- Hidden audio element -->
             <audio id="memoryAudio" style="display: none;"></audio>
-            
-            <button class="btn" onclick="app.continueScan()">
-                Continue Scanning
-            </button>
-            
-            <button class="btn secondary" onclick="app.viewCollection()">
-                View Collection
-            </button>
         </div>
     </div>
     
@@ -300,21 +313,44 @@
                             this.stopScanning();
                         } else if (document.getElementById('manualEntryModal').classList.contains('active')) {
                             this.hideManualEntry();
+                        } else if (document.getElementById('memoryDisplay').classList.contains('active')) {
+                            this.continueScan();
                         }
                     }
-                    
+
                     // Debug shortcuts
                     if (e.ctrlKey && e.key === 'd') {
                         this.toggleDebugMode();
                     }
                 });
-                
+
                 // Handle manual entry submit on Enter
                 document.getElementById('manualTokenId').addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
                         this.processManualEntry();
                     }
                 });
+
+                // Tap-to-continue on memory display (full screen tap target)
+                const memoryTapTarget = document.getElementById('memoryTapTarget');
+                if (memoryTapTarget) {
+                    memoryTapTarget.addEventListener('click', () => {
+                        this.continueScan();
+                    });
+                }
+
+                // Tap audio indicator to play when autoplay blocked
+                const audioIndicator = document.getElementById('audioIndicator');
+                if (audioIndicator) {
+                    audioIndicator.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Don't trigger continue
+                        if (this.currentAudio) {
+                            this.currentAudio.play().then(() => {
+                                audioIndicator.classList.remove('tap-to-play');
+                            }).catch(err => console.log('Play failed:', err));
+                        }
+                    });
+                }
             }
             
             async startScanning() {
@@ -553,34 +589,46 @@
                 // Hide scanner, show memory display
                 document.getElementById('scannerContainer').classList.remove('active');
                 document.getElementById('memoryDisplay').classList.add('active');
-                
+
+                // Reset and show status overlay (triggers auto-fade animation)
+                const statusOverlay = document.getElementById('memoryStatusOverlay');
+                statusOverlay.style.animation = 'none';
+                statusOverlay.offsetHeight; // Force reflow
+                statusOverlay.style.animation = 'status-fade 4s ease-out forwards';
+
                 // Show status (new vs revisited)
                 const status = document.getElementById('memoryStatus');
                 status.textContent = isNew ? '✨ New Memory!' : '✓ Memory Revisited';
-                
+                status.className = isNew ? 'memory-status new-memory' : 'memory-status';
+
                 // Handle image display
                 const img = document.getElementById('memoryImage');
                 const placeholder = document.getElementById('audioPlaceholder');
-                
+
                 if (token.image) {
                     img.style.display = 'block';
-                    placeholder.style.display = 'none';
+                    placeholder.classList.remove('active');
                     img.classList.add('loading');
                     img.src = token.image;
                     img.onload = () => img.classList.remove('loading');
                 } else {
-                    // No image - show placeholder if audio exists, otherwise hide both
+                    // No image - show placeholder if audio exists
                     img.style.display = 'none';
-                    placeholder.style.display = token.audio ? 'flex' : 'none';
+                    if (token.audio) {
+                        placeholder.classList.add('active');
+                    } else {
+                        placeholder.classList.remove('active');
+                    }
                 }
-                
-                // Setup audio if exists
+
+                // Setup audio with auto-play
                 if (token.audio) {
-                    this.setupAudio(token.audio);
+                    this.setupAudioWithAutoplay(token.audio);
                 } else {
-                    document.getElementById('audioControls').classList.remove('active');
+                    // Hide audio indicator if no audio
+                    document.getElementById('audioIndicator').classList.remove('active');
                 }
-                
+
                 // If no media at all, show token ID
                 if (!token.image && !token.audio) {
                     status.textContent += ` Token: ${token.SF_RFID || token.id}`;
@@ -593,26 +641,38 @@
                 img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"%3E%3Crect fill="%23888" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle"%3E🖼️%3C/text%3E%3C/svg%3E';
             }
             
-            setupAudio(audioUrl) {
-                const audioControls = document.getElementById('audioControls');
+            setupAudioWithAutoplay(audioUrl) {
+                const audioIndicator = document.getElementById('audioIndicator');
                 const audio = document.getElementById('memoryAudio');
-                
+
                 if (audioUrl) {
                     audio.src = audioUrl;
-                    audioControls.classList.add('active');
                     this.currentAudio = audio;
-                    
-                    // Auto-play if user has interacted
-                    if (document.visibilityState === 'visible') {
-                        audio.play().catch(err => {
-                            console.log('Auto-play prevented:', err);
+
+                    // Show audio indicator
+                    audioIndicator.classList.add('active');
+                    audioIndicator.classList.remove('tap-to-play');
+
+                    // Auto-play with fallback for blocked browsers
+                    const playPromise = audio.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(err => {
+                            console.log('Auto-play blocked:', err);
+                            // Show tap-to-play hint
+                            audioIndicator.classList.add('tap-to-play');
                         });
                     }
+
+                    // Update indicator when audio ends
+                    audio.onended = () => {
+                        audioIndicator.classList.remove('active');
+                    };
                 } else {
-                    audioControls.classList.remove('active');
+                    audioIndicator.classList.remove('active');
                     this.currentAudio = null;
                 }
             }
+
             
             playAudio() {
                 if (this.currentAudio) {
@@ -631,7 +691,12 @@
             continueScan() {
                 // Stop any playing audio
                 this.stopAudio();
-                
+
+                // Hide audio indicator
+                const audioIndicator = document.getElementById('audioIndicator');
+                audioIndicator.classList.remove('active');
+                audioIndicator.classList.remove('tap-to-play');
+
                 // Hide memory display, show scanner
                 document.getElementById('memoryDisplay').classList.remove('active');
                 this.startScanning();

@@ -9,6 +9,7 @@
  * 4. Layout (structure, containers)
  * 5. Components (buttons, cards, modals)
  * 6. Screens (screen-specific styles)
+ * 7. Memory Display (full-bleed immersive)
  */
 
 @import 'variables.css';
@@ -17,3 +18,4 @@
 @import 'layout.css';
 @import 'components.css';
 @import 'screens.css';
+@import 'memory-display.css';

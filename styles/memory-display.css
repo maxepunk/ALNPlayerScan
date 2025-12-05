@@ -1,0 +1,408 @@
+/**
+ * Memory Display - Full-Bleed Immersive Layout
+ * NeurAI Player Scanner PWA
+ *
+ * Design: Image-dominant, tap-to-continue, auto-fading status
+ * BMP native: 240×320 (3:4 portrait ratio)
+ */
+
+/* ═══════════════════════════════════════════════════════
+   Memory Display Container - Full Viewport Takeover
+   ═══════════════════════════════════════════════════════ */
+
+.memory-display {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--neurai-bg-primary);
+  z-index: var(--z-overlay);
+  overflow: hidden;
+}
+
+.memory-display.active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: memory-reveal 0.4s ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Image Container - Preserves 3:4 Aspect Ratio
+   ═══════════════════════════════════════════════════════ */
+
+.memory-image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+}
+
+.memory-image {
+  /* Preserve native 3:4 aspect ratio - NO cropping */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+
+  /* Visual polish - NeurAI style */
+  border: 2px solid var(--neurai-accent-primary);
+  box-shadow:
+    0 0 60px var(--neurai-accent-glow),
+    0 25px 80px rgba(0, 0, 0, 0.9);
+
+  /* Entrance animation */
+  animation: image-reveal 0.6s ease-out;
+}
+
+/* Loading state shimmer */
+.memory-image.loading {
+  background: linear-gradient(
+    90deg,
+    var(--neurai-bg-elevated) 0%,
+    var(--neurai-bg-secondary) 50%,
+    var(--neurai-bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  min-width: 240px;
+  min-height: 320px;
+  aspect-ratio: 3 / 4;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Portrait-Optimized Image Sizing
+   ═══════════════════════════════════════════════════════ */
+
+@media (orientation: portrait) {
+  .memory-image-container {
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .memory-image {
+    /* Width-constrained in portrait */
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 140px); /* Room for status + hint */
+  }
+}
+
+@media (orientation: landscape) {
+  .memory-image-container {
+    padding: var(--spacing-md) var(--spacing-2xl);
+  }
+
+  .memory-image {
+    /* Height-constrained in landscape */
+    max-height: calc(100vh - 100px);
+    max-width: calc(100vw - 200px);
+  }
+}
+
+/* Small phones - tighter constraints */
+@media (max-height: 600px) and (orientation: portrait) {
+  .memory-image {
+    max-height: calc(100vh - 100px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Status Overlay - Top of Screen (Auto-fade)
+   ═══════════════════════════════════════════════════════ */
+
+.memory-status-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: var(--spacing-xl) var(--spacing-md) var(--spacing-2xl);
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.7) 50%,
+    transparent 100%
+  );
+  text-align: center;
+  z-index: 10;
+  pointer-events: none;
+
+  /* Auto-fade after 3s */
+  animation: status-fade 4s ease-out forwards;
+}
+
+.memory-status-overlay h2 {
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  color: var(--neurai-accent-primary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-widest);
+  margin: 0 0 var(--spacing-xs);
+  text-shadow: 0 0 30px var(--neurai-accent-glow);
+}
+
+.memory-status {
+  font-family: var(--font-display);
+  font-size: var(--font-size-sm);
+  color: var(--neurai-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.memory-status.new-memory {
+  color: var(--neurai-accent-secondary);
+  text-shadow: 0 0 15px var(--neurai-accent-glow);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Audio Indicator - Bottom Left
+   ═══════════════════════════════════════════════════════ */
+
+.audio-indicator {
+  position: absolute;
+  bottom: var(--spacing-xl);
+  left: var(--spacing-lg);
+  display: none; /* Hidden by default, shown via JS */
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--neurai-accent-primary);
+  z-index: 10;
+}
+
+.audio-indicator.active {
+  display: flex;
+  animation: audio-fade-in 0.3s ease-out;
+}
+
+.audio-indicator__icon {
+  font-size: 18px;
+}
+
+.audio-indicator__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 18px;
+}
+
+.audio-indicator__bar {
+  width: 3px;
+  background: var(--neurai-accent-primary);
+  border-radius: 2px;
+}
+
+.audio-indicator.active .audio-indicator__bar {
+  animation: audio-bar 0.6s ease-in-out infinite;
+}
+
+.audio-indicator__bar:nth-child(1) { height: 30%; animation-delay: 0s; }
+.audio-indicator__bar:nth-child(2) { height: 60%; animation-delay: 0.1s; }
+.audio-indicator__bar:nth-child(3) { height: 100%; animation-delay: 0.2s; }
+.audio-indicator__bar:nth-child(4) { height: 50%; animation-delay: 0.3s; }
+
+/* Tap to play hint when autoplay blocked */
+.audio-indicator.tap-to-play::after {
+  content: 'TAP';
+  margin-left: var(--spacing-xs);
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--neurai-text-secondary);
+  letter-spacing: 0.1em;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Continue Hint - Bottom Center
+   ═══════════════════════════════════════════════════════ */
+
+.continue-hint {
+  position: absolute;
+  bottom: var(--spacing-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 10;
+
+  font-family: var(--font-display);
+  font-size: var(--font-size-xs);
+  color: var(--neurai-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wider);
+  white-space: nowrap;
+
+  /* Subtle breathe animation */
+  animation: hint-breathe 3s ease-in-out infinite;
+  animation-delay: 2s; /* Start after status fades */
+  opacity: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Touch Target - Full Screen Tap Area
+   ═══════════════════════════════════════════════════════ */
+
+.memory-tap-target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  cursor: pointer;
+
+  /* Visual feedback on tap */
+  -webkit-tap-highlight-color: rgba(204, 0, 0, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Audio-Only Placeholder
+   ═══════════════════════════════════════════════════════ */
+
+.audio-placeholder {
+  display: none; /* Hidden by default */
+  width: 280px;
+  aspect-ratio: 3 / 4;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  background: var(--neurai-bg-elevated);
+  border: 2px solid var(--neurai-accent-primary);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 60px var(--neurai-accent-glow),
+    0 25px 80px rgba(0, 0, 0, 0.9);
+}
+
+.audio-placeholder.active {
+  display: flex;
+}
+
+.audio-placeholder__icon {
+  font-size: 100px;
+  animation: audio-pulse 2s ease-in-out infinite;
+}
+
+.audio-placeholder__text {
+  font-family: var(--font-display);
+  font-size: var(--font-size-sm);
+  color: var(--neurai-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Animations
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes memory-reveal {
+  from {
+    opacity: 0;
+    background: rgba(10, 10, 10, 0);
+  }
+  to {
+    opacity: 1;
+    background: var(--neurai-bg-primary);
+  }
+}
+
+@keyframes image-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+    filter: brightness(0.3) blur(10px);
+  }
+  50% {
+    filter: brightness(1.2) blur(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1) blur(0);
+  }
+}
+
+@keyframes status-fade {
+  0%, 50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes audio-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes audio-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes audio-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes hint-breathe {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.5;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reduced Motion
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .memory-display.active,
+  .memory-image,
+  .memory-status-overlay,
+  .audio-indicator,
+  .audio-indicator__bar,
+  .audio-placeholder__icon,
+  .continue-hint {
+    animation: none;
+  }
+
+  .memory-display.active {
+    opacity: 1;
+  }
+
+  .memory-status-overlay {
+    opacity: 1;
+  }
+
+  .continue-hint {
+    opacity: 0.6;
+  }
+}
