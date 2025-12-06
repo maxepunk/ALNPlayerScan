@@ -180,7 +180,10 @@
                     // Hide loading, show welcome
                     document.getElementById('loadingScreen').style.display = 'none';
                     document.getElementById('welcomeScreen').classList.remove('hidden');
-                    
+
+                    // Check for token in URL parameter (from NFC tag tap)
+                    this.handleUrlToken();
+
                 } catch (error) {
                     console.error('Initialization error:', error);
                     this.showError('Failed to initialize app. Please refresh.');
@@ -807,6 +810,63 @@
                     collected: Array.from(this.scannedTokens)
                 };
                 console.table(debugInfo);
+            }
+
+            /**
+             * Handle token passed via URL parameter from NFC tag
+             * Enables "tap tag -> auto-open browser -> auto-process token" flow
+             */
+            handleUrlToken() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const tokenFromUrl = urlParams.get('token');
+
+                if (tokenFromUrl) {
+                    console.log(`[NFC-URL] Token from URL parameter: ${tokenFromUrl}`);
+
+                    // Clean URL to prevent re-processing on refresh
+                    const cleanUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, cleanUrl);
+
+                    // Process the token after a short delay to ensure app is fully initialized
+                    setTimeout(() => {
+                        this.handleTokenFromUrl(tokenFromUrl);
+                    }, 500);
+                }
+            }
+
+            /**
+             * Process token received from URL parameter
+             * @param {string} tokenId - Token ID from URL
+             */
+            async handleTokenFromUrl(tokenId) {
+                console.log(`[NFC-URL] Processing token: ${tokenId}`);
+
+                // Normalize token ID (same as handleScan)
+                const normalizedId = tokenId.toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+                // Validate token ID
+                if (!normalizedId || normalizedId.length === 0) {
+                    console.log('[NFC-URL] Invalid token: Empty after normalization');
+                    this.showError('Invalid token from URL');
+                    return;
+                }
+
+                if (normalizedId.length > 100) {
+                    console.log('[NFC-URL] Invalid token: Exceeds 100 character limit');
+                    this.showError('Token ID too long');
+                    return;
+                }
+
+                // Look up token in database
+                const token = this.tokens[normalizedId];
+
+                if (token) {
+                    // Process the token using existing logic
+                    this.processToken(token);
+                } else {
+                    console.warn(`[NFC-URL] Token not found: ${normalizedId}`);
+                    this.showError(`Unknown token: ${normalizedId}`);
+                }
             }
         }
         
