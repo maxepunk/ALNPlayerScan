@@ -1,6 +1,10 @@
 # CLAUDE.md
 
+Last verified: 2025-12-08
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+For cross-cutting concerns (scoring logic, operation modes, game modes, token schema), see @../CLAUDE.md.
 
 ## Project Overview
 
