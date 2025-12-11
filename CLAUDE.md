@@ -45,7 +45,7 @@ All scans to orchestrator include `deviceType` field for duplicate detection:
 ```javascript
 {
   tokenId: 'token123',
-  teamId: '001',  // Optional
+  teamId: 'RedTeam',  // Optional (1-30 chars)
   deviceId: this.deviceId,
   deviceType: 'player',  // REQUIRED - identifies scanner type
   timestamp: new Date().toISOString()
