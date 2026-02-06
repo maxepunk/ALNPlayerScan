@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Last verified: 2025-12-08
+Last verified: 2026-02-06
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -64,7 +64,7 @@ aln-memory-scanner/
 
 **Key Principle**: Single source of truth via Git submodules. Both Player Scanner and GM Scanner repos point to the same ALN-TokenData repository.
 
-**Fallback Chain** (`index.html:~800`):
+**Fallback Chain** (`index.html:~193`):
 1. `data/tokens.json` (submodule - preferred)
 2. `tokens.json` (root - backward compatibility)
 3. Demo data (hardcoded fallback)
@@ -74,13 +74,15 @@ Each token contains both player-facing and GM-facing fields:
 ```json
 {
   "token_id": {
-    "image": "assets/images/file.jpg",    // Player scanner displays
-    "audio": "assets/audio/file.mp3",     // Player scanner plays
-    "video": "filename.mp4",              // Triggers orchestrator playback
-    "SF_RFID": "token_id",                // GM scanner logic
-    "SF_ValueRating": 1-5,                // GM scanner scoring
-    "SF_MemoryType": "Type",              // GM scanner categorization
-    "SF_Group": "Group (xN)"              // GM scanner set tracking
+    "image": "assets/images/token_id.bmp",   // Player scanner displays
+    "audio": "assets/audio/token_id.wav",    // Player scanner plays
+    "video": "token_id.mp4",                 // Triggers orchestrator playback
+    "processingImage": "assets/images/token_id.bmp", // Placeholder during video playback
+    "SF_RFID": "token_id",                   // GM scanner logic
+    "SF_ValueRating": 1-5,                   // GM scanner scoring
+    "SF_MemoryType": "Type",                 // GM scanner categorization
+    "SF_Group": "Group (xN)",                // GM scanner set tracking
+    "summary": "Description text"            // Token summary/description
   }
 }
 ```
@@ -169,17 +171,17 @@ open http://localhost:8000
 
 ### Service Worker Updates
 When modifying cached files (index.html, config.html, orchestratorIntegration.js):
-1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.2'`)
+1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.3'`)
 2. Deploy changes
 3. Users must close all app tabs and reopen to activate new service worker
 
 ## Key Components
 
 ### index.html
-Single-page application with embedded JavaScript (~1000 lines):
+Single-page application with embedded JavaScript (~950 lines):
 - `MemoryScanner` class: Main application logic
 - Token loading with fallback chain
-- QR scanner integration (html5-qrcode library via CDN)
+- QR scanner integration (qr-scanner library via CDN)
 - Audio/image display logic
 - Collection management (localStorage)
 - Orchestrator integration via `OrchestratorIntegration` class
@@ -199,6 +201,9 @@ Network configuration UI for networked mode:
 - Manual orchestrator URL override
 - Connection status indicator
 - Device ID management
+
+### styles/
+Modular CSS architecture split into 8 files: `variables.css`, `base.css`, `layout.css`, `components.css`, `screens.css`, `animations.css`, `memory-display.css`, and `main.css` (imports all others). Loaded via `main.css` entry point.
 
 ### sw.js
 Service worker for offline PWA functionality:
