@@ -1,14 +1,14 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.3.0 - Full-bleed immersive memory display
+// Version 1.4.0 - Fixed cache paths
 
-const CACHE_NAME = 'aln-scanner-v1.3';  // Updated for immersive memory display
+const CACHE_NAME = 'aln-scanner-v1.4';  // Fixed cache paths: data/tokens.json, placeholder.bmp
 const APP_SHELL = [
   './',
   './index.html',
   './config.html',
   './manifest.json',
-  './tokens.json',
-  './assets/images/placeholder.jpg',
+  './data/tokens.json',
+  './assets/images/placeholder.bmp',
   './js/orchestratorIntegration.js',
   // Modular CSS architecture
   './styles/main.css',
@@ -151,7 +151,7 @@ self.addEventListener('fetch', event => {
             // Offline fallbacks
             if (request.destination === 'image') {
               // Return placeholder image for failed image requests
-              return caches.match('./assets/images/placeholder.jpg');
+              return caches.match('./assets/images/placeholder.bmp');
             }
             
             // For HTML requests, return the cached index.html
@@ -234,10 +234,10 @@ self.addEventListener('periodicsync', event => {
 async function updateTokenDatabase() {
   try {
     // Fetch latest tokens.json
-    const response = await fetch('./tokens.json');
+    const response = await fetch('./data/tokens.json');
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
-      await cache.put('./tokens.json', response);
+      await cache.put('./data/tokens.json', response);
       console.log('[Service Worker] Token database updated');
     }
   } catch (error) {
@@ -246,4 +246,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.3.0 loaded - Full-bleed immersive memory display');
+console.log('[Service Worker] Version 1.4.0 loaded');

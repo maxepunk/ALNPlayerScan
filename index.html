@@ -470,98 +470,68 @@
                 document.getElementById('memoryDisplay').classList.remove('active');
             }
             
-            handleScan(tokenId) {
-                console.log('🔍 Scanned token:', tokenId);
+            /**
+             * Normalize and validate a token ID.
+             * Returns the normalized ID, or null if invalid (shows error + vibrates).
+             */
+            normalizeTokenId(rawId) {
+                const tokenId = rawId.toLowerCase().replace(/[^a-z0-9_]/g, '');
 
-                // Normalize token ID (remove special characters, lowercase)
-                tokenId = tokenId.toLowerCase().replace(/[^a-z0-9_]/g, '');
-
-                // Validate token ID (Bug #3 fix - OpenAPI contract compliance)
-                if (!tokenId || tokenId.length === 0) {
-                    console.log('❌ Invalid token: Empty after normalization');
+                if (!tokenId) {
                     this.showError('Invalid token: ID contains only special characters');
-                    if (navigator.vibrate) {
-                        navigator.vibrate([100, 50, 100]);
-                    }
-                    return;
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    return null;
                 }
 
                 if (tokenId.length > 100) {
-                    console.log('❌ Invalid token: Exceeds 100 character limit');
                     this.showError(`Invalid token: ID too long (${tokenId.length} characters, max 100)`);
-                    if (navigator.vibrate) {
-                        navigator.vibrate([100, 50, 100]);
-                    }
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    return null;
+                }
+
+                return tokenId;
+            }
+
+            handleScan(rawTokenId) {
+                console.log('Scanned token:', rawTokenId);
+
+                const tokenId = this.normalizeTokenId(rawTokenId);
+                if (!tokenId) return;
+
+                const token = this.tokens[tokenId];
+                if (!token) {
+                    console.log('Unknown token:', tokenId);
+                    this.showError(`Unknown token: ${tokenId}`);
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                     return;
                 }
 
-                // Check if token exists in database
-                const token = this.tokens[tokenId];
-                
-                if (!token) {
-                    console.log('❌ Unknown token:', tokenId);
-                    this.showError(`Unknown token: ${tokenId}`);
-                    
-                    // Vibrate for error
-                    if (navigator.vibrate) {
-                        navigator.vibrate([100, 50, 100]);
-                    }
-                    
-                    return;
-                }
-                
-                // Process the token
                 this.processToken(token);
             }
             
+            handleOrchestratorResponse(response) {
+                if (response.status === 'error' && response.error) {
+                    this.showError(response.error);
+                } else if (response.queued) {
+                    this.showError('Scan queued - orchestrator unavailable');
+                }
+            }
+
             processToken(token) {
                 // Send to orchestrator in networked mode (for ALL token types, not just video)
                 // Check isStandalone, NOT connected - scanToken() handles offline queueing internally
                 if (orchestrator && !orchestrator.isStandalone) {
-                    // Get current team from UI or use default (3-digit format per OpenAPI contract)
                     const teamId = sessionStorage.getItem('currentTeam') || '001';
 
                     // Show video alert ONLY for video tokens
                     if (token.video) {
                         this.showVideoAlert();
-
-                        // Set timeout IMMEDIATELY to guarantee alert hides
-                        // Alert will auto-hide after 5s for player to notice
-                        const alertTimeout = setTimeout(() => {
-                            this.hideVideoAlert();
-                        }, 5000);
-
-                        // Send to orchestrator
-                        orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
-                            console.log('Orchestrator response:', response);
-
-                            // Check for error or queued status
-                            if (response.status === 'error' && response.error) {
-                                this.showError(response.error);
-                            } else if (response.queued) {
-                                this.showError('Scan queued - orchestrator unavailable');
-                            }
-
-                            // Alert stays visible for full 5 seconds - no early dismissal
-                        }).catch(error => {
-                            console.error('Orchestrator error:', error);
-                            // On error, keep alert visible - player should still look at screen
-                        });
-                    } else {
-                        // Non-video tokens: send to orchestrator without alert
-                        orchestrator.scanToken(token.SF_RFID, teamId).then(response => {
-                            console.log('Orchestrator response (non-video):', response);
-
-                            // Check for error or queued status
-                            if (response.status === 'error' && response.error) {
-                                this.showError(response.error);
-                            } else if (response.queued) {
-                                this.showError('Scan queued - orchestrator unavailable');
-                            }
-                        }).catch(error => {
-                            console.error('Orchestrator error (non-video):', error);
-                        });
+                        setTimeout(() => this.hideVideoAlert(), 5000);
                     }
+
+                    orchestrator.scanToken(token.SF_RFID, teamId)
+                        .then(response => this.handleOrchestratorResponse(response))
+                        .catch(error => console.error('Orchestrator error:', error));
                 }
 
                 // Track if new or revisited
@@ -586,8 +556,7 @@
                 
                 console.log('✅ Token processed:', token.SF_RFID || token.id);
             }
-            
-            
+
             displayMemory(token, isNew) {
                 // Hide scanner, show memory display
                 document.getElementById('scannerContainer').classList.remove('active');
@@ -648,42 +617,26 @@
                 const audioIndicator = document.getElementById('audioIndicator');
                 const audio = document.getElementById('memoryAudio');
 
-                if (audioUrl) {
-                    audio.src = audioUrl;
-                    this.currentAudio = audio;
+                audio.src = audioUrl;
+                this.currentAudio = audio;
 
-                    // Show audio indicator
-                    audioIndicator.classList.add('active');
-                    audioIndicator.classList.remove('tap-to-play');
+                audioIndicator.classList.add('active');
+                audioIndicator.classList.remove('tap-to-play');
 
-                    // Auto-play with fallback for blocked browsers
-                    const playPromise = audio.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(err => {
-                            console.log('Auto-play blocked:', err);
-                            // Show tap-to-play hint
-                            audioIndicator.classList.add('tap-to-play');
-                        });
-                    }
+                // Auto-play with fallback for blocked browsers
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(() => {
+                        audioIndicator.classList.add('tap-to-play');
+                    });
+                }
 
-                    // Update indicator when audio ends
-                    audio.onended = () => {
-                        audioIndicator.classList.remove('active');
-                    };
-                } else {
+                audio.onended = () => {
                     audioIndicator.classList.remove('active');
-                    this.currentAudio = null;
-                }
+                };
             }
 
 
-            // Debug/console utility - no UI calls this directly
-            playAudio() {
-                if (this.currentAudio) {
-                    this.currentAudio.play();
-                }
-            }
-            
             stopAudio() {
                 if (this.currentAudio) {
                     this.currentAudio.pause();
@@ -834,45 +787,15 @@
                 }
             }
 
-            /**
-             * Process token received from URL parameter
-             * @param {string} tokenId - Token ID from URL
-             */
-            async handleTokenFromUrl(tokenId) {
-                console.log(`[NFC-URL] Processing token: ${tokenId}`);
-
-                // Normalize token ID (same as handleScan)
-                const normalizedId = tokenId.toLowerCase().replace(/[^a-z0-9_]/g, '');
-
-                // Validate token ID
-                if (!normalizedId || normalizedId.length === 0) {
-                    console.log('[NFC-URL] Invalid token: Empty after normalization');
-                    this.showError('Invalid token from URL');
-                    return;
-                }
-
-                if (normalizedId.length > 100) {
-                    console.log('[NFC-URL] Invalid token: Exceeds 100 character limit');
-                    this.showError('Token ID too long');
-                    return;
-                }
-
-                // Look up token in database
-                const token = this.tokens[normalizedId];
-
-                if (token) {
-                    // Process the token using existing logic
-                    this.processToken(token);
-                } else {
-                    console.warn(`[NFC-URL] Token not found: ${normalizedId}`);
-                    this.showError(`Unknown token: ${normalizedId}`);
-                }
+            handleTokenFromUrl(rawTokenId) {
+                console.log('[NFC-URL] Processing token:', rawTokenId);
+                // Reuse the same scan path (normalizes, validates, and processes)
+                this.handleScan(rawTokenId);
             }
         }
         
         // Initialize app when DOM is ready
-        // Initialize app when DOM is ready
-    let app;  // Declare globally first
+    let app;
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             app = new MemoryScanner();
@@ -887,28 +810,11 @@
     <!-- Orchestrator Integration -->
     <script src="js/orchestratorIntegration.js"></script>
     <script>
-        // DIAGNOSTIC: Script block executing
-        console.log('[DIAGNOSTIC] Orchestrator initialization script executing');
-        console.log('[DIAGNOSTIC] document.readyState =', document.readyState);
-        console.log('[DIAGNOSTIC] OrchestratorIntegration class available?', typeof OrchestratorIntegration !== 'undefined');
-
-        // Initialize orchestrator (attached to window for cross-script access)
         window.orchestrator = null;
-        console.log('[DIAGNOSTIC] window.orchestrator initialized to null');
 
-        // Initialize orchestrator with readyState check (prevents race condition)
         function initOrchestrator() {
-            console.log('[DIAGNOSTIC] initOrchestrator() called');
-            try {
-                window.orchestrator = new OrchestratorIntegration();
-                console.log('[DIAGNOSTIC] window.orchestrator created successfully:', window.orchestrator);
-                console.log('[DIAGNOSTIC] window.orchestrator.isStandalone =', window.orchestrator.isStandalone);
-            } catch (error) {
-                console.error('[DIAGNOSTIC] ERROR creating OrchestratorIntegration:', error);
-                throw error;
-            }
+            window.orchestrator = new OrchestratorIntegration();
 
-            // Listen for connection events
             window.addEventListener('orchestrator:connected', () => {
                 document.getElementById('connection-status').classList.add('connected');
                 document.querySelector('.status-text').textContent = 'Online';
@@ -920,13 +826,9 @@
             });
         }
 
-        // Initialize on page load (with readyState check to avoid race condition)
-        console.log('[DIAGNOSTIC] Checking readyState for initialization timing...');
         if (document.readyState === 'loading') {
-            console.log('[DIAGNOSTIC] DOM still loading, adding DOMContentLoaded listener');
             document.addEventListener('DOMContentLoaded', initOrchestrator);
         } else {
-            console.log('[DIAGNOSTIC] DOM already loaded, initializing immediately');
             initOrchestrator();
         }
     </script>

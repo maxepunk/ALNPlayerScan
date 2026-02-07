@@ -5,79 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0a0a0a">
     <title>NeurAI Scanner - Network Configuration</title>
+    <link rel="stylesheet" href="styles/main.css">
     <style>
-        /* NeurAI Design Tokens */
-        :root {
-            --neurai-bg-primary: #0a0a0a;
-            --neurai-bg-secondary: #111111;
-            --neurai-bg-elevated: #1a1a1a;
-            --neurai-accent-primary: #CC0000;
-            --neurai-accent-secondary: #FF3333;
-            --neurai-accent-glow: rgba(204, 0, 0, 0.4);
-            --neurai-text-primary: #ffffff;
-            --neurai-text-secondary: #a0a0a0;
-            --neurai-text-muted: #666666;
-            --neurai-success: #4CAF50;
-            --neurai-error: #CC0000;
-            --font-display: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
-            --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        /* Page-specific styles for config.html (base styles from styles/main.css) */
         body {
-            font-family: var(--font-body);
-            margin: 0;
             padding: 20px;
-            background: var(--neurai-bg-primary);
-            color: var(--neurai-text-primary);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
             align-items: center;
         }
 
         .config-container {
             background: var(--neurai-bg-elevated);
             border: 1px solid var(--neurai-accent-primary);
-            border-radius: 16px;
+            border-radius: var(--radius-xl);
             padding: 30px;
             max-width: 500px;
             width: 100%;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px var(--neurai-accent-glow);
+            box-shadow: var(--shadow-xl), var(--shadow-glow-intense);
         }
 
         h1 {
-            font-family: var(--font-display);
             text-align: center;
             margin-bottom: 30px;
-            font-size: 20px;
-            color: var(--neurai-accent-primary);
-            letter-spacing: 0.25em;
-            text-transform: uppercase;
             text-shadow: 0 0 20px var(--neurai-accent-glow);
         }
 
         h3 {
-            font-family: var(--font-display);
-            font-size: 14px;
             color: var(--neurai-text-primary);
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
             margin-bottom: 15px;
         }
 
         .status-box {
             background: rgba(255, 255, 255, 0.03);
             padding: 15px;
-            border-radius: 10px;
+            border-radius: var(--radius-lg);
             margin-bottom: 20px;
             text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: var(--border-subtle);
         }
 
         .status-indicator {
@@ -105,12 +68,6 @@
             animation: pulse 1s infinite;
         }
 
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
-        }
-
         .form-group {
             margin-bottom: 20px;
         }
@@ -119,50 +76,32 @@
             display: block;
             margin-bottom: 8px;
             font-family: var(--font-display);
-            font-size: 12px;
-            font-weight: 500;
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: var(--letter-spacing-wider);
             color: var(--neurai-text-secondary);
         }
 
-        input[type="text"], input[type="url"] {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--neurai-text-primary);
+        input[type="url"] {
             font-family: var(--font-display);
-            font-size: 14px;
-            box-sizing: border-box;
-            transition: all 0.3s ease;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: var(--neurai-accent-primary);
-            box-shadow: 0 0 20px var(--neurai-accent-glow);
-        }
-
-        input::placeholder {
-            color: var(--neurai-text-muted);
+            font-size: var(--font-size-sm);
         }
 
         button {
             width: 100%;
             padding: 14px;
             border: none;
-            border-radius: 999px;
+            border-radius: var(--radius-full);
             background: var(--neurai-accent-primary);
             color: var(--neurai-text-primary);
             font-family: var(--font-display);
-            font-size: 14px;
-            font-weight: 600;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: var(--letter-spacing-wider);
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all var(--transition-normal);
             margin-top: 10px;
             box-shadow: 0 4px 15px rgba(204, 0, 0, 0.3);
         }
@@ -182,7 +121,7 @@
         .discovery-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: var(--border-subtle);
         }
 
         .discovered-servers {
@@ -192,14 +131,14 @@
         .server-item {
             background: rgba(255, 255, 255, 0.05);
             padding: 12px 15px;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             margin-bottom: 10px;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.2s ease;
+            border: var(--border-subtle);
+            transition: all var(--transition-fast);
         }
 
         .server-item:hover {
@@ -211,20 +150,19 @@
             width: auto;
             padding: 8px 16px;
             margin: 0;
-            font-size: 12px;
+            font-size: var(--font-size-xs);
         }
 
         .back-link {
             display: inline-block;
             margin-top: 20px;
             font-family: var(--font-display);
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             color: var(--neurai-text-secondary);
-            text-decoration: none;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: var(--letter-spacing-wider);
             opacity: 0.8;
-            transition: all 0.2s ease;
+            transition: all var(--transition-fast);
         }
 
         .back-link:hover {
@@ -234,27 +172,27 @@
 
         .message {
             padding: 12px;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             margin-top: 15px;
             text-align: center;
             font-family: var(--font-display);
-            font-size: 13px;
+            font-size: var(--font-size-sm);
         }
 
         .message.success {
-            background: rgba(76, 175, 80, 0.2);
-            border: 1px solid var(--neurai-success);
+            background: var(--neurai-success-bg);
+            border: var(--border-success);
             color: var(--neurai-success);
         }
 
         .message.error {
-            background: rgba(204, 0, 0, 0.2);
-            border: 1px solid var(--neurai-error);
+            background: var(--neurai-error-bg);
+            border: var(--border-error);
             color: var(--neurai-accent-secondary);
         }
 
         .info-text {
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             color: var(--neurai-text-muted);
             margin-top: 8px;
         }

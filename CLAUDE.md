@@ -171,8 +171,9 @@ open http://localhost:8000
 
 ### Service Worker Updates
 When modifying cached files (index.html, config.html, orchestratorIntegration.js):
-1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.3'`)
-2. Deploy changes
+1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.4'`)
+2. Verify `APP_SHELL` paths match actual file locations (e.g., `./data/tokens.json` not `./tokens.json`)
+3. Deploy changes
 3. Users must close all app tabs and reopen to activate new service worker
 
 ## Key Components
