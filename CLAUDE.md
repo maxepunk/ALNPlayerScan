@@ -75,7 +75,7 @@ Each token contains both player-facing and GM-facing fields:
 {
   "token_id": {
     "image": "assets/images/token_id.bmp",   // Player scanner displays
-    "audio": "assets/audio/token_id.wav",    // Player scanner plays
+    "audio": "assets/audio/token_id.wav|.mp3", // Player scanner plays
     "video": "token_id.mp4",                 // Triggers orchestrator playback
     "processingImage": "assets/images/token_id.bmp", // Placeholder during video playback
     "SF_RFID": "token_id",                   // GM scanner logic
