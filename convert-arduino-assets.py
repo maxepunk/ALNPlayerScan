@@ -123,7 +123,9 @@ if missing_images:
     colors = {
         'Personal': (79, 189, 186),
         'Technical': (126, 200, 227),
+        'Mention': (163, 230, 53),       # Lime green
         'Business': (231, 76, 60),
+        'Party': (192, 132, 252),        # Purple
         'Military': (149, 165, 166),
         'Intelligence': (44, 62, 80),
         'Test': (100, 100, 100)

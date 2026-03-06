@@ -164,7 +164,9 @@ def generate_color_qr():
     colors = {
         'Personal': (79, 189, 186),      # Teal
         'Technical': (126, 200, 227),    # Light blue
+        'Mention': (163, 230, 53),       # Lime green
         'Business': (231, 76, 60),       # Red
+        'Party': (192, 132, 252),        # Purple
         'Military': (149, 165, 166),     # Gray
         'Intelligence': (44, 62, 80),    # Dark blue
         'Test': (136, 136, 136),         # Gray
