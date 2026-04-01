@@ -176,6 +176,32 @@ When modifying cached files (index.html, config.html, orchestratorIntegration.js
 3. Deploy changes
 3. Users must close all app tabs and reopen to activate new service worker
 
+## Testing
+
+```bash
+npm test                           # Run all Jest tests
+npx jest tests/scannerCore.test.js # Run specific test file
+```
+
+**Test infrastructure:** Jest with jsdom environment. No build system required.
+
+**Test files:**
+- `tests/scannerCore.test.js` — normalizeTokenId() and isStandaloneMode() pure logic
+- `tests/orchestratorIntegration.test.js` — mode detection, URL handling, offline queue, scan operations, connection monitoring
+
+**Key patterns:**
+- `orchestratorIntegration.js` constructor has side effects (localStorage read, setInterval) — tests use `jest.useFakeTimers()` and `jest.resetModules()` for isolation
+- `window.location` mocked via property deletion + reassignment before each import
+- `fetch` mocked globally before construction
+
+### scannerCore.js
+
+Extracted pure logic (no DOM dependencies) from `MemoryScanner` class:
+- `normalizeTokenId(rawId)` — returns `{ tokenId }` or `{ error }` (no side effects)
+- `isStandaloneMode(pathname)` — path-based mode detection
+
+Works in both browser (`window.scannerCore`) and Node.js (`module.exports`). Index.html delegates to `window.scannerCore.normalizeTokenId()` and handles DOM side effects (showError, vibrate) locally.
+
 ## Key Components
 
 ### index.html
