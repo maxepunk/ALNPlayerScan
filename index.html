@@ -475,21 +475,13 @@
              * Returns the normalized ID, or null if invalid (shows error + vibrates).
              */
             normalizeTokenId(rawId) {
-                const tokenId = rawId.toLowerCase().replace(/[^a-z0-9_]/g, '');
-
-                if (!tokenId) {
-                    this.showError('Invalid token: ID contains only special characters');
+                const result = window.scannerCore.normalizeTokenId(rawId);
+                if (result.error) {
+                    this.showError(result.error);
                     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                     return null;
                 }
-
-                if (tokenId.length > 100) {
-                    this.showError(`Invalid token: ID too long (${tokenId.length} characters, max 100)`);
-                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                    return null;
-                }
-
-                return tokenId;
+                return result.tokenId;
             }
 
             handleScan(rawTokenId) {
@@ -806,6 +798,9 @@
         window.app = app;
     }
     </script>
+
+    <!-- Scanner Core (pure logic, no DOM deps) -->
+    <script src="js/scannerCore.js"></script>
 
     <!-- Orchestrator Integration -->
     <script src="js/orchestratorIntegration.js"></script>

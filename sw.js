@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
 // Version 1.4.0 - Fixed cache paths
 
-const CACHE_NAME = 'aln-scanner-v1.4';  // Fixed cache paths: data/tokens.json, placeholder.bmp
+const CACHE_NAME = 'aln-scanner-v1.5';  // Added scannerCore.js (pure logic module)
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const APP_SHELL = [
   './data/tokens.json',
   './assets/images/placeholder.bmp',
   './js/orchestratorIntegration.js',
+  './js/scannerCore.js',
   // Modular CSS architecture
   './styles/main.css',
   './styles/variables.css',
