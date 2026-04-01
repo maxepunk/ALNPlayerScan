@@ -1,5 +1,5 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.4.0 - Fixed cache paths
+// Version 1.5.0 - Added scannerCore.js to app shell
 
 const CACHE_NAME = 'aln-scanner-v1.5';  // Added scannerCore.js (pure logic module)
 const APP_SHELL = [
@@ -247,4 +247,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.4.0 loaded');
+console.log('[Service Worker] Version 1.5.0 loaded');
