@@ -29,3 +29,41 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+  manifest-validation:
+    name: Manifest matches assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch generator script from parent repo
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/maxepunk/ALN-Ecosystem/main/scripts/generate_asset_manifest.py \
+            -o /tmp/generate_asset_manifest.py
+
+      - name: Regenerate manifest and diff against committed copy
+        run: |
+          cp assets/manifest.json /tmp/manifest-committed.json
+          python3 /tmp/generate_asset_manifest.py assets/
+          python3 - <<'PY'
+          import json, sys
+          a = json.load(open('/tmp/manifest-committed.json'))
+          b = json.load(open('assets/manifest.json'))
+          # `version` is a generation timestamp — strip before diffing.
+          a.pop('version', None)
+          b.pop('version', None)
+          if a != b:
+              print('::error::Committed manifest does not match actual assets.')
+              print('Run: python3 scripts/generate_asset_manifest.py from parent repo,')
+              print('then commit the updated assets/manifest.json.')
+              sys.exit(1)
+          print('Manifest matches assets ✓')
+          PY
