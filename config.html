@@ -343,23 +343,32 @@
                     }
                 }
 
-                const commonPorts = [3000, 8080];
+                // ALN orchestrator topology:
+                //   - HTTPS on port 3000 (the actual server, requires NFC-capable secure context)
+                //   - Plain HTTP on port 8000 (redirects 301 → HTTPS:3000)
+                // We probe port 8000 (NOT 3000) because:
+                //   - Browser fetch() cannot accept self-signed certs from cross-origin requests
+                //     (no API for cert trust override), so HTTPS probes silently fail at TLS
+                //   - Port 8000 responds in plain HTTP, no TLS handshake required
+                // mode: 'no-cors' returns an opaque response on any successful TCP connection
+                // (the orchestrator's HTTP redirect server is bare http.createServer and does
+                // not set CORS headers — without no-cors the response would be blocked).
+                const PROBE_PORT = 8000;
+                const ORCHESTRATOR_HTTPS_PORT = 3000;
                 const promises = [];
 
                 // Scan detected subnet
                 for (let i = 1; i <= 254; i++) {
-                    for (const port of commonPorts) {
-                        const url = `http://${subnet}.${i}:${port}`;
-                        promises.push(
-                            fetch(`${url}/health`, {
-                                method: 'GET',
-                                mode: 'cors',
-                                signal: AbortSignal.timeout(500)
-                            })
-                            .then(response => response.ok ? url : null)
-                            .catch(() => null)
-                        );
-                    }
+                    const probeUrl = `http://${subnet}.${i}:${PROBE_PORT}/health`;
+                    const orchestratorUrl = `https://${subnet}.${i}:${ORCHESTRATOR_HTTPS_PORT}`;
+                    promises.push(
+                        fetch(probeUrl, {
+                            mode: 'no-cors',
+                            signal: AbortSignal.timeout(500)
+                        })
+                        .then(() => orchestratorUrl)
+                        .catch(() => null)
+                    );
 
                     // Limit concurrent requests to avoid overwhelming the network
                     if (promises.length >= 20) {
@@ -367,12 +376,13 @@
                     }
                 }
 
-                // Also try localhost
+                // Also try localhost (same HTTP-probe / HTTPS-resolve pattern)
                 promises.push(
-                    fetch('http://localhost:3000/health', {
+                    fetch(`http://localhost:${PROBE_PORT}/health`, {
+                        mode: 'no-cors',
                         signal: AbortSignal.timeout(1000)
                     })
-                    .then(response => response.ok ? 'http://localhost:3000' : null)
+                    .then(() => `https://localhost:${ORCHESTRATOR_HTTPS_PORT}`)
                     .catch(() => null)
                 );
 
