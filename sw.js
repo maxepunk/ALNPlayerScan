@@ -1,5 +1,5 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.5.0 - Added scannerCore.js to app shell
+// Version 1.7.0 - Discovery probes HTTP redirect port 8000, resolves HTTPS:3000 orchestrator URLs
 
 const CACHE_NAME = 'aln-scanner-v1.7';  // Discovery now probes HTTP redirect port 8000 → resolves HTTPS:3000 (cross-origin self-signed cert workaround)
 const APP_SHELL = [
