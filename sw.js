@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
 // Version 1.5.0 - Added scannerCore.js to app shell
 
-const CACHE_NAME = 'aln-scanner-v1.5';  // Added scannerCore.js (pure logic module)
+const CACHE_NAME = 'aln-scanner-v1.6';  // Fix discovery endpoint /api/state/status → /health in config.html
 const APP_SHELL = [
   './',
   './index.html',
