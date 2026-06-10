@@ -236,6 +236,15 @@ class OrchestratorIntegration {
       return;
     }
 
+    if (!response) {
+      // Indeterminate send (no Response object) — treat as a network-class
+      // failure: requeue with the same pendingBatchId so backend idempotency
+      // protects against double-processing if the batch actually landed.
+      this.offlineQueue.unshift(...batch);
+      this.saveQueue();
+      return;
+    }
+
     if (response.ok) {
       console.log('Batch processed successfully');
       this.setPendingBatchId(null);
