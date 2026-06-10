@@ -585,6 +585,9 @@
                     img.style.display = 'block';
                     placeholder.classList.remove('active');
                     img.classList.add('loading');
+                    // F-PARITY-12: wire onerror BEFORE setting src so a 404'd
+                    // image shows the fallback instead of a broken-image glyph
+                    img.onerror = () => this.handleImageError(img);
                     img.src = token.image;
                     img.onload = () => img.classList.remove('loading');
                 } else {
@@ -613,6 +616,9 @@
             
             handleImageError(img) {
                 console.error('❌ Failed to load image:', img.src);
+                // Clear handler first so a (theoretical) fallback failure can't loop
+                img.onerror = null;
+                img.classList.remove('loading');
                 // Use fallback image
                 img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"%3E%3Crect fill="%23888" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle"%3E🖼️%3C/text%3E%3C/svg%3E';
             }
