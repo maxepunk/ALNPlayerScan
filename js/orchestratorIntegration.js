@@ -28,6 +28,9 @@ class OrchestratorIntegration {
       // Load offline queue from localStorage
       this.loadQueue();
 
+      // F-SCAN-10: restore in-flight batch id so a reload mid-retry reuses it
+      this.pendingBatchId = localStorage.getItem('pending_batch_id') || null;
+
       // Start connection monitoring
       this.startConnectionMonitor();
     } else {
@@ -36,6 +39,7 @@ class OrchestratorIntegration {
       this.connected = false;
       this.connectionCheckInterval = null;
       this.pendingConnectionCheck = undefined;
+      this.pendingBatchId = null;
 
       console.log('Player Scanner: Standalone mode detected (no orchestrator connection)');
     }
@@ -189,15 +193,19 @@ class OrchestratorIntegration {
     console.log(`Processing ${this.offlineQueue.length} offline transactions...`);
     const batch = this.offlineQueue.splice(0, 10); // Process up to 10 at a time
 
-    // P2.1: Generate batchId for idempotency
-    const batchId = this.generateBatchId();
+    // F-SCAN-10: mint the batchId PER BATCH, not per attempt. Retries of the
+    // same batch reuse the same id (persisted across reloads) so the backend's
+    // idempotency cache deduplicates resends after a lost response.
+    const batchId = this.pendingBatchId || this.generateBatchId();
+    this.setPendingBatchId(batchId);
 
+    let response;
     try {
-      const response = await fetch(`${this.baseUrl}/api/scan/batch`, {
+      response = await fetch(`${this.baseUrl}/api/scan/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          batchId,  // P2.1: Idempotency key
+          batchId,  // P2.1: Idempotency key (stable across retries)
           transactions: batch.map(item => ({
             tokenId: item.tokenId,
             teamId: item.teamId,
@@ -207,25 +215,71 @@ class OrchestratorIntegration {
           }))
         })
       });
-
-      if (response.ok) {
-        console.log('Batch processed successfully');
-        this.saveQueue();
-
-        // Process remaining queue
-        if (this.offlineQueue.length > 0) {
-          setTimeout(() => this.processOfflineQueue(), 1000);
-        }
-      } else {
-        // Re-queue failed batch
-        this.offlineQueue.unshift(...batch);
-        this.saveQueue();
-      }
     } catch (error) {
-      console.error('Batch processing failed:', error);
-      // Re-queue failed batch
+      console.error('Batch processing failed (network):', error);
+      // Re-queue for retry; pendingBatchId stays set for the next attempt
       this.offlineQueue.unshift(...batch);
       this.saveQueue();
+      return;
+    }
+
+    if (response.ok) {
+      console.log('Batch processed successfully');
+      this.setPendingBatchId(null);
+      this.saveQueue();
+
+      // Process remaining queue
+      if (this.offlineQueue.length > 0) {
+        setTimeout(() => this.processOfflineQueue(), 1000);
+      }
+      return;
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      // F-SCAN-10: 4xx is FINAL — drop the batch with an error report instead
+      // of requeueing it forever.
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (e) {
+        // No parseable body
+      }
+      console.error(
+        `Batch rejected (HTTP ${response.status}) — dropping ${batch.length} scan(s):`,
+        (body && body.message) || 'no error details',
+        batch.map(item => item.tokenId)
+      );
+      this.setPendingBatchId(null);
+      this.saveQueue();
+
+      // Continue with the rest of the queue
+      if (this.offlineQueue.length > 0) {
+        setTimeout(() => this.processOfflineQueue(), 1000);
+      }
+      return;
+    }
+
+    // 5xx — retryable: re-queue, keep pendingBatchId for the retry
+    console.error(`Batch failed (HTTP ${response.status}), will retry`);
+    this.offlineQueue.unshift(...batch);
+    this.saveQueue();
+  }
+
+  /**
+   * Track the batchId of the in-flight/retrying batch (F-SCAN-10).
+   * Persisted to localStorage so a reload mid-retry keeps idempotency.
+   * @param {string|null} batchId - id to remember, or null to clear
+   */
+  setPendingBatchId(batchId) {
+    this.pendingBatchId = batchId;
+    try {
+      if (batchId) {
+        localStorage.setItem('pending_batch_id', batchId);
+      } else {
+        localStorage.removeItem('pending_batch_id');
+      }
+    } catch (e) {
+      console.error('Failed to persist pending batch id:', e);
     }
   }
 

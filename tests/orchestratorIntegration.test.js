@@ -375,6 +375,119 @@ describe('OrchestratorIntegration', () => {
     });
   });
 
+  // ─── Batch Replay (F-SCAN-10) ─────────────────────────────────────
+
+  describe('processOfflineQueue', () => {
+    function batchIdOfCall(mockFetch, idx = 0) {
+      return JSON.parse(mockFetch.mock.calls[idx][1].body).batchId;
+    }
+
+    test('successful batch clears queue and pending batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatchId).toBeNull();
+      expect(mockStorage['pending_batch_id']).toBeUndefined();
+    });
+
+    test('F-SCAN-10: retry after 5xx reuses the SAME batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      // Attempt 1: 503 → requeued
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(2);
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      // Attempt 2: success → SAME batchId (backend idempotency cache works)
+      // (constructor's initial checkConnection rejection settles during the
+      // first await and flips connected=false — re-pin it, as elsewhere)
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('F-SCAN-10: retry after network error reuses the SAME batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(1);
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
+    });
+
+    test('a NEW batch after success mints a NEW batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+
+      orch.queueOffline('t1', 'team');
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      orch.queueOffline('t2', 'team');
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).not.toBe(firstBatchId);
+    });
+
+    test('F-SCAN-10: 400 batch response is DROPPED with error report, not requeued', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 400,
+        json: () => Promise.resolve({ error: 'VALIDATION_ERROR', message: 'Validation failed' }),
+      });
+      await orch.processOfflineQueue();
+
+      expect(orch.offlineQueue).toHaveLength(0); // dropped, NOT requeued forever
+      expect(orch.pendingBatchId).toBeNull();
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('dropping'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    test('pending batchId survives reload (persisted to localStorage)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      await orch.processOfflineQueue();
+      const persisted = mockStorage['pending_batch_id'];
+      expect(persisted).toBeTruthy();
+
+      const orch2 = createInstance('/player-scanner/');
+      expect(orch2.pendingBatchId).toBe(persisted);
+    });
+  });
+
   // ─── Connection Monitoring ────────────────────────────────────────
 
   describe('connection monitoring', () => {
