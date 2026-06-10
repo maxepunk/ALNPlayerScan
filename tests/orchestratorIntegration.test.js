@@ -270,6 +270,109 @@ describe('OrchestratorIntegration', () => {
       expect(result.queued).toBe(true);
       expect(orch.offlineQueue).toHaveLength(1);
     });
+
+    // ─── F-SCAN-01 (P0) / Decision A5: 4xx is FINAL, only network-level
+    //     failures (fetch rejection / 5xx) may queue ─────────────────────
+
+    test('queues on 5xx server error (retryable)', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ error: 'SERVICE_UNAVAILABLE', message: 'Server is still initializing, please retry' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(true);
+      expect(orch.offlineQueue).toHaveLength(1);
+    });
+
+    test('409 video-rejected is FINAL: not queued, passes through rejected status', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({
+          status: 'rejected',
+          message: 'Video already playing, please wait',
+          tokenId: 'kaa001',
+          videoQueued: false,
+          waitTime: 30,
+        }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('rejected');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('409 SESSION_NOT_FOUND is FINAL: not queued, surfaces error', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({
+          error: 'SESSION_NOT_FOUND',
+          message: 'No active session - admin must create session first',
+        }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(result.error).toContain('No active session');
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('400 validation error is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'VALIDATION_ERROR', message: 'Validation failed: tokenId' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('404 TOKEN_NOT_FOUND is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: 'TOKEN_NOT_FOUND', message: 'Token kaa001 not recognized' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('4xx with unparseable body is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.reject(new Error('not json')),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
   });
 
   // ─── Connection Monitoring ────────────────────────────────────────

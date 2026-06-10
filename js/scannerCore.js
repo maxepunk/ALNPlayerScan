@@ -37,6 +37,50 @@ const scannerCore = {
   isStandaloneMode(pathname) {
     if (!pathname) return true;
     return !pathname.startsWith('/player-scanner/') && pathname !== '/player-scanner';
+  },
+
+  /**
+   * Classify an orchestrator scanToken() response into a UI treatment.
+   * Implements Decisions A4 + A5 (2026-06-09):
+   *  - A4: queued scans NEVER trigger video on replay, so a video token that
+   *    was merely queued must show "video unavailable", not "video triggered".
+   *  - A5: server-rejected (4xx) scans are FINAL — alert the player; the
+   *    video-unavailable treatment tells them to rescan to retry.
+   *
+   * @param {object|null} response - result of OrchestratorIntegration.scanToken()
+   * @param {boolean} isVideoToken - whether the scanned token has a video field
+   * @returns {{treatment: 'none'|'video-triggered'|'video-unavailable'|'error'|'queued', message?: string}}
+   */
+  classifyScanResponse(response, isVideoToken) {
+    if (!response || response.status === 'standalone') {
+      return { treatment: 'none' };
+    }
+
+    if (isVideoToken) {
+      if (response.queued || response.status === 'rejected') {
+        // Queued (offline / network failure / 5xx): replay never fires video.
+        // Rejected (409 video busy / vlc down): scan recorded, video skipped.
+        return {
+          treatment: 'video-unavailable',
+          message: 'Video unavailable — rescan to retry'
+        };
+      }
+      if (response.status === 'error') {
+        return { treatment: 'error', message: response.error || 'Scan failed' };
+      }
+      return { treatment: 'video-triggered' };
+    }
+
+    if (response.queued) {
+      return { treatment: 'queued', message: 'Scan queued - orchestrator unavailable' };
+    }
+    if (response.status === 'error' || response.status === 'rejected') {
+      return {
+        treatment: 'error',
+        message: response.error || response.message || 'Scan failed'
+      };
+    }
+    return { treatment: 'none' };
   }
 };
 

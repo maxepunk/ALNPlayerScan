@@ -501,11 +501,24 @@
                 this.processToken(token);
             }
             
-            handleOrchestratorResponse(response) {
-                if (response.status === 'error' && response.error) {
-                    this.showError(response.error);
-                } else if (response.queued) {
-                    this.showError('Scan queued - orchestrator unavailable');
+            handleOrchestratorResponse(response, isVideoToken) {
+                // Decisions A4 + A5: treatment depends on what actually happened
+                // server-side (classification logic lives in scannerCore for testability)
+                const { treatment, message } = window.scannerCore.classifyScanResponse(response, isVideoToken);
+
+                switch (treatment) {
+                    case 'video-triggered':
+                        this.showVideoAlert();
+                        setTimeout(() => this.hideVideoAlert(), 5000);
+                        break;
+                    case 'video-unavailable':
+                        this.showVideoUnavailable(message);
+                        break;
+                    case 'error':
+                    case 'queued':
+                        this.showError(message);
+                        break;
+                    // 'none': accepted (non-video) or standalone — no UI needed
                 }
             }
 
@@ -515,14 +528,13 @@
                 if (orchestrator && !orchestrator.isStandalone) {
                     const teamId = sessionStorage.getItem('currentTeam') || '001';
 
-                    // Show video alert ONLY for video tokens
-                    if (token.video) {
-                        this.showVideoAlert();
-                        setTimeout(() => this.hideVideoAlert(), 5000);
-                    }
+                    // Video alert is shown AFTER the orchestrator responds (Decision A4):
+                    // a queued/rejected scan never triggers playback, so we must not
+                    // promise "VIDEO MEMORY TRIGGERED" until the server accepts it.
+                    const isVideoToken = !!token.video;
 
                     orchestrator.scanToken(token.SF_RFID, teamId)
-                        .then(response => this.handleOrchestratorResponse(response))
+                        .then(response => this.handleOrchestratorResponse(response, isVideoToken))
                         .catch(error => console.error('Orchestrator error:', error));
                 }
 
@@ -709,6 +721,20 @@
                 }
 
                 console.log('📺 Video alert shown - LOOK AT THE VIDEO SCREEN');
+            }
+
+            showVideoUnavailable(message) {
+                // Decision A4/A5 treatment: video token scanned but playback will
+                // NOT happen (offline-queued, video busy, or VLC down). The local
+                // memory display is unaffected; player rescans later to retry.
+                this.showError(`📺 ${message || 'Video unavailable — rescan to retry'}`);
+
+                // Distinct short vibration (vs the dramatic video-alert pattern)
+                if (navigator.vibrate) {
+                    navigator.vibrate([100, 50, 100]);
+                }
+
+                console.log('📺 Video unavailable treatment shown (no playback promised)');
             }
 
             hideVideoAlert() {

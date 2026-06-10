@@ -77,8 +77,9 @@ class OrchestratorIntegration {
       return { status: 'offline', queued: true };
     }
 
+    let response;
     try {
-      const response = await fetch(`${this.baseUrl}/api/scan`, {
+      response = await fetch(`${this.baseUrl}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,27 +90,57 @@ class OrchestratorIntegration {
           timestamp: new Date().toISOString()
         })
       });
-
-      if (!response.ok) {
-        // Try to parse error response body
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch (e) {
-          // If JSON parsing fails, use default message
-        }
-        throw new Error(errorMessage);
-      }
-
-      return await response.json();
     } catch (error) {
-      console.error('Scan failed:', error);
+      // Network-level failure (fetch rejection) — the request may never have
+      // reached the server. Queue for batch replay (Decision A5).
+      console.error('Scan failed (network):', error);
       this.queueOffline(tokenId, teamId);
       return { status: 'error', queued: true, error: error.message };
     }
+
+    // Parse response body (both success and error shapes are JSON)
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (e) {
+      // Non-JSON body — fall through with null body
+    }
+
+    if (response.ok) {
+      // 200: {status:'accepted', tokenId, mediaAssets, videoQueued}
+      return body || { status: 'accepted' };
+    }
+
+    if (response.status >= 500) {
+      // Server-side failure (5xx) — retryable, queue for replay (Decision A5)
+      console.error(`Scan failed (HTTP ${response.status}), queuing for replay`);
+      this.queueOffline(tokenId, teamId);
+      return {
+        status: 'error',
+        queued: true,
+        error: (body && body.message) || `HTTP error! status: ${response.status}`
+      };
+    }
+
+    // 4xx = FINAL — the server made a decision; NEVER queue (F-SCAN-01 P0,
+    // Decision A5: rejected scans are definitive, rescan to retry).
+    // /api/scan 409 is a documented oneOf:
+    //   {status:'rejected', ...}        → video trigger rejected, scan WAS recorded
+    //   {error:'SESSION_NOT_FOUND', ..} → scan NOT recorded (final: no session)
+    if (response.status === 409 && body && body.status === 'rejected') {
+      console.warn('Scan video-rejected (scan recorded, video skipped):', body.message);
+      return { ...body, queued: false };
+    }
+
+    // SESSION_NOT_FOUND 409, 400 validation, 404 unknown token, other 4xx
+    const errorMessage = (body && body.message) || `HTTP error! status: ${response.status}`;
+    console.warn(`Scan rejected (HTTP ${response.status}, final):`, errorMessage);
+    return {
+      status: 'error',
+      queued: false,
+      error: errorMessage,
+      ...(body && body.error && { code: body.error })
+    };
   }
 
   queueOffline(tokenId, teamId) {
