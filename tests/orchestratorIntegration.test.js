@@ -89,6 +89,28 @@ describe('OrchestratorIntegration', () => {
     });
   });
 
+  // ─── Device Identity (F-PARITY-04) ────────────────────────────────
+
+  describe('deviceId persistence', () => {
+    test('uses stored device_id from localStorage when present', () => {
+      mockStorage['device_id'] = 'PLAYER_STABLE_123';
+      const orch = createInstance('/player-scanner/');
+      expect(orch.deviceId).toBe('PLAYER_STABLE_123');
+    });
+
+    test('F-PARITY-04: persists a generated deviceId back to localStorage', () => {
+      const orch = createInstance('/player-scanner/');
+      expect(orch.deviceId).toMatch(/^PLAYER_/);
+      expect(mockStorage['device_id']).toBe(orch.deviceId);
+    });
+
+    test('deviceId is stable across reloads (no registry churn)', () => {
+      const orch1 = createInstance('/player-scanner/');
+      const orch2 = createInstance('/player-scanner/');
+      expect(orch2.deviceId).toBe(orch1.deviceId);
+    });
+  });
+
   // ─── URL Detection & Normalization ────────────────────────────────
 
   describe('URL handling', () => {
@@ -166,8 +188,8 @@ describe('OrchestratorIntegration', () => {
 
     test('loadQueue restores from localStorage', () => {
       mockStorage['offline_queue'] = JSON.stringify([
-        { tokenId: 'saved1', teamId: 'team', timestamp: 123, retryCount: 0 },
-        { tokenId: 'saved2', teamId: 'team', timestamp: 456, retryCount: 0 },
+        { tokenId: 'saved1', teamId: 'team', timestamp: 123 },
+        { tokenId: 'saved2', teamId: 'team', timestamp: 456 },
       ]);
       const orch = createInstance('/player-scanner/');
       expect(orch.offlineQueue).toHaveLength(2);

@@ -1,6 +1,8 @@
 /**
  * OrchestratorIntegration - Manages communication with ALN Orchestrator
- * Provides offline queue support and automatic retry with exponential backoff
+ * Provides offline queue support: scans that fail at the network level
+ * (fetch rejection / 5xx) are queued and replayed in batches when the
+ * connection monitor (10s health-check interval) observes a reconnect.
  *
  * DUAL-MODE OPERATION:
  * - Networked Mode: Served from /player-scanner/ path, connection monitoring + queue
@@ -10,8 +12,20 @@ class OrchestratorIntegration {
   constructor() {
     this.baseUrl = localStorage.getItem('orchestrator_url') || this.detectOrchestratorUrl();
     this.maxQueueSize = 100; // Maximum offline transactions
-    this.retryDelay = 1000;  // Initial retry delay (exponential backoff)
-    this.deviceId = localStorage.getItem('device_id') || 'PLAYER_' + Date.now();
+
+    // F-PARITY-04: stable device identity — persist the generated id so the
+    // device keeps the same identity across page loads (per-device attribution
+    // in session.playerScans, no device-registry churn / heartbeat noise)
+    let deviceId = localStorage.getItem('device_id');
+    if (!deviceId) {
+      deviceId = 'PLAYER_' + Date.now();
+      try {
+        localStorage.setItem('device_id', deviceId);
+      } catch (e) {
+        console.error('Failed to persist device_id:', e);
+      }
+    }
+    this.deviceId = deviceId;
 
     // Detect deployment mode (FR:113 - Standalone "never attempts to connect")
     // Handle both /player-scanner and /player-scanner/ (trailing slash variations)
@@ -156,8 +170,7 @@ class OrchestratorIntegration {
     this.offlineQueue.push({
       tokenId,
       teamId,
-      timestamp: Date.now(),
-      retryCount: 0
+      timestamp: Date.now()
     });
 
     this.saveQueue(); // Persist to localStorage
