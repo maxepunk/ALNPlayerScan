@@ -43,8 +43,9 @@ describe('OrchestratorIntegration', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     setupStorageMock();
-    // Suppress console.log/error during tests
+    // Suppress console.log/warn/error during tests
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
