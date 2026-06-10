@@ -28,6 +28,20 @@ module.exports = [
     },
   },
   {
+    // app.js consumes script-tag globals defined in sibling js/ files.
+    // Declare them here to prevent no-undef errors without polluting the
+    // other js/ files (which DEFINE these names, not consume them).
+    files: ['js/app.js'],
+    languageOptions: {
+      globals: {
+        QrScanner: 'readonly',           // CDN: qr-scanner.umd.min.js
+        NDEFReader: 'readonly',          // Web NFC API (not in globals.browser yet)
+        tokenDisplay: 'readonly',        // js/tokenDisplay.js → window.tokenDisplay
+        OrchestratorIntegration: 'readonly', // js/orchestratorIntegration.js class
+      },
+    },
+  },
+  {
     files: ['sw.js'],
     languageOptions: {
       ecmaVersion: 2022,

@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.8.0 - tokens.json served network-first with cache fallback (F-PARITY-07)
+// Version 1.9.0 - phase2 module extraction: tokenDisplay.js + app.js added to precache
 
-const CACHE_NAME = 'aln-scanner-v1.8';  // tokens.json network-first (F-PARITY-07): token DB refreshes on load when online, no cache-bump needed for token edits
+const CACHE_NAME = 'aln-scanner-v1.9';  // tokens.json network-first (F-PARITY-07): token DB refreshes on load when online, no cache-bump needed for token edits
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,8 +9,10 @@ const APP_SHELL = [
   './manifest.json',
   './data/tokens.json',
   './assets/images/placeholder.bmp',
-  './js/orchestratorIntegration.js',
   './js/scannerCore.js',
+  './js/tokenDisplay.js',
+  './js/app.js',
+  './js/orchestratorIntegration.js',
   // Modular CSS architecture
   './styles/main.css',
   './styles/variables.css',
@@ -268,4 +270,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.8.0 loaded');
+console.log('[Service Worker] Version 1.9.0 loaded');

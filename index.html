@@ -26,31 +26,31 @@
             <a href="config.html" class="config-link">⚙️</a>
         </div>
     </div>
-    
+
     <div class="main-container">
         <!-- Loading Screen -->
         <div class="loading" id="loadingScreen">
             <div class="spinner"></div>
             <p>Loading memory database...</p>
         </div>
-        
+
         <!-- Welcome Screen -->
         <div class="welcome-screen hidden" id="welcomeScreen">
             <div class="logo">🧠</div>
             <h2>Memory Token Scanner</h2>
             <p style="margin: 20px 0; opacity: 0.8;">Scan QR codes or NFC tags to collect memories</p>
-            
+
             <button class="btn" onclick="app.startScanning()">
                 Start Scanning
             </button>
-            
+
             <button class="btn secondary" onclick="app.showManualEntry()">
                 Manual Entry
             </button>
-            
+
             <div id="scanMethodInfo" style="margin-top: 20px; font-size: 14px; opacity: 0.7;"></div>
         </div>
-        
+
         <!-- Scanner Container -->
         <div class="scanner-container" id="scannerContainer">
             <video id="scanner-video"></video>
@@ -62,7 +62,7 @@
                 Stop Scanning
             </button>
         </div>
-        
+
         <!-- Memory Display - Full-Bleed Immersive -->
         <div class="memory-display" id="memoryDisplay">
             <!-- Tap anywhere to continue -->
@@ -101,14 +101,14 @@
             <audio id="memoryAudio" style="display: none;"></audio>
         </div>
     </div>
-    
+
     <!-- Stats removed - player only sees media -->
-    
+
     <!-- NFC Indicator -->
     <div class="nfc-indicator" id="nfcIndicator">
         <span id="nfcStatus">NFC Ready</span>
     </div>
-    
+
     <!-- Manual Entry Modal -->
     <div class="modal" id="manualEntryModal">
         <div class="modal-content">
@@ -119,7 +119,7 @@
             <button class="btn secondary" onclick="app.hideManualEntry()">Cancel</button>
         </div>
     </div>
-    
+
     <!-- Install Prompt -->
     <div class="install-prompt" id="installPrompt">
         <p><strong>📱 Install ALN Scanner</strong></p>
@@ -133,10 +133,9 @@
             </button>
         </div>
     </div>
-    
+
     <!-- QR Scanner Library -->
     <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
-    <!-- Add this debug code right after -->
     <script>
     window.addEventListener('load', () => {
         console.log('QrScanner available?', typeof QrScanner !== 'undefined');
@@ -145,720 +144,18 @@
         }
     });
     </script>
-    <script>
-        // Main Application Class
-        class MemoryScanner {
-            constructor() {
-                this.scanner = null;
-                this.isScanning = false;
-                this.scannedTokens = new Set();
-                this.tokens = {};
-                this.currentToken = null;
-                this.currentAudio = null;
-                this.deferredPrompt = null;
-                
-                this.init();
-            }
-            
-            async init() {
-                try {
-                    // Load token database from external file
-                    await this.loadTokenDatabase();
-                    
-                    // Setup capabilities
-                    this.checkCapabilities();
-                    
-                    // Setup PWA
-                    this.setupPWA();
-                    
-                    // Load saved data
-                    this.loadSavedData();
-                    
-                    // Setup event listeners
-                    this.setupEventListeners();
-                    
-                    // Hide loading, show welcome
-                    document.getElementById('loadingScreen').style.display = 'none';
-                    document.getElementById('welcomeScreen').classList.remove('hidden');
-
-                    // Check for token in URL parameter (from NFC tag tap)
-                    this.handleUrlToken();
-
-                } catch (error) {
-                    console.error('Initialization error:', error);
-                    this.showError('Failed to initialize app. Please refresh.');
-                }
-            }
-            
-            async loadTokenDatabase() {
-                try {
-                    // Try loading from submodule path first
-                    const response = await fetch('./data/tokens.json');
-                    if (!response.ok) {
-                        throw new Error('Failed to load token database from submodule');
-                    }
-                    this.tokens = await response.json();
-                    console.log(`✅ Loaded ${Object.keys(this.tokens).length} tokens from data/tokens.json`);
-                } catch (error) {
-                    console.error('Error loading data/tokens.json:', error);
-                    try {
-                        // Fallback to root directory (for backward compatibility)
-                        const response = await fetch('./tokens.json');
-                        if (!response.ok) {
-                            throw new Error('Failed to load token database');
-                        }
-                        this.tokens = await response.json();
-                        console.log(`✅ Loaded ${Object.keys(this.tokens).length} tokens from tokens.json`);
-                    } catch (error2) {
-                        console.error('Error loading tokens.json:', error2);
-                        // Fallback to embedded tokens
-                        this.tokens = this.getDefaultTokens();
-                        console.log('⚠️ Using fallback token database');
-                    }
-                }
-            }
-            
-            getDefaultTokens() {
-                // Minimal fallback tokens if tokens.json fails to load
-                return {
-                    'test_001': {
-                        SF_RFID: 'test_001',
-                        SF_ValueRating: 3,
-                        SF_MemoryType: 'Test',
-                        SF_Group: 'Development',
-                        image: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"%3E%3Crect fill="%23888" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle"%3E❓%3C/text%3E%3C/svg%3E',
-                        audio: null
-                    }
-                };
-            }
-            
-            checkCapabilities() {
-                const info = document.getElementById('scanMethodInfo');
-                const capabilities = [];
-                
-                // Check for camera/QR scanning
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    capabilities.push('📷 QR Scanner');
-                }
-                
-                // Check for NFC
-                if ('NDEFReader' in window) {
-                    capabilities.push('📡 NFC');
-                    document.getElementById('nfcIndicator').classList.add('active');
-                }
-                
-                capabilities.push('⌨️ Manual Entry');
-                
-                info.innerHTML = `Available: ${capabilities.join(' • ')}`;
-            }
-            
-            setupPWA() {
-                // Register service worker
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('sw.js')
-                        .then(reg => console.log('✅ Service Worker registered'))
-                        .catch(err => console.log('⚠️ Service Worker registration failed:', err));
-                }
-                
-                // Install prompt
-                window.addEventListener('beforeinstallprompt', (e) => {
-                    e.preventDefault();
-                    this.deferredPrompt = e;
-                    
-                    // Show install prompt after 30 seconds
-                    setTimeout(() => {
-                        if (this.deferredPrompt && !this.isInstalled()) {
-                            document.getElementById('installPrompt').classList.add('show');
-                        }
-                    }, 30000);
-                });
-                
-                // Check if already installed
-                window.addEventListener('appinstalled', () => {
-                    console.log('✅ PWA installed');
-                    this.deferredPrompt = null;
-                });
-            }
-            
-            isInstalled() {
-                // Check if running in standalone mode
-                return window.matchMedia('(display-mode: standalone)').matches ||
-                       window.navigator.standalone === true;
-            }
-            
-            loadSavedData() {
-                const saved = localStorage.getItem('alnMemoryScanner');
-                if (saved) {
-                    try {
-                        const data = JSON.parse(saved);
-                        this.scannedTokens = new Set(data.scannedTokens || []);
-                        console.log('✅ Loaded saved progress');
-                    } catch (error) {
-                        console.error('Error loading saved data:', error);
-                    }
-                }
-            }
-            
-            saveData() {
-                const data = {
-                    scannedTokens: Array.from(this.scannedTokens),
-                    lastScan: Date.now(),
-                    version: '1.0'
-                };
-                localStorage.setItem('alnMemoryScanner', JSON.stringify(data));
-            }
-            
-            setupEventListeners() {
-                // Keyboard shortcuts
-                document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Escape') {
-                        if (this.isScanning) {
-                            this.stopScanning();
-                        } else if (document.getElementById('manualEntryModal').classList.contains('active')) {
-                            this.hideManualEntry();
-                        } else if (document.getElementById('memoryDisplay').classList.contains('active')) {
-                            this.continueScan();
-                        }
-                    }
-
-                    // Debug shortcuts
-                    if (e.ctrlKey && e.key === 'd') {
-                        this.toggleDebugMode();
-                    }
-                });
-
-                // Handle manual entry submit on Enter
-                document.getElementById('manualTokenId').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        this.processManualEntry();
-                    }
-                });
-
-                // Tap-to-continue on memory display (full screen tap target)
-                const memoryTapTarget = document.getElementById('memoryTapTarget');
-                if (memoryTapTarget) {
-                    memoryTapTarget.addEventListener('click', () => {
-                        this.continueScan();
-                    });
-                }
-
-                // Tap audio indicator to play when autoplay blocked
-                const audioIndicator = document.getElementById('audioIndicator');
-                if (audioIndicator) {
-                    audioIndicator.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Don't trigger continue
-                        if (this.currentAudio) {
-                            this.currentAudio.play().then(() => {
-                                audioIndicator.classList.remove('tap-to-play');
-                            }).catch(err => console.log('Play failed:', err));
-                        }
-                    });
-                }
-            }
-            
-            async startScanning() {
-                // Try NFC first if available and not iOS
-                if ('NDEFReader' in window && !this.isIOS()) {
-                    try {
-                        await this.startNFCScanning();
-                        return;
-                    } catch (err) {
-                        console.log('NFC not available, falling back to QR');
-                    }
-                }
-                
-                // Fall back to QR scanning
-                await this.startQRScanning();
-            }
-            
-            async startQRScanning() {
-                try {
-                    const video = document.getElementById('scanner-video');
-                    
-                    // Hide welcome screen, show scanner
-                    document.getElementById('welcomeScreen').classList.add('hidden');
-                    document.getElementById('scannerContainer').classList.add('active');
-                    
-                    // Initialize QR scanner
-                    this.scanner = new QrScanner(
-                        video,
-                        result => this.handleScan(result.data),
-                        {
-                            highlightScanRegion: true,
-                            highlightCodeOutline: true,
-                            returnDetailedScanResult: true,
-                            preferredCamera: 'environment'
-                        }
-                    );
-                    
-                    await this.scanner.start();
-                    this.isScanning = true;
-                    
-                    console.log('📷 QR Scanner started');
-                    
-                } catch (err) {
-                    console.error('Failed to start QR scanner:', err);
-                    this.showError('Camera access denied. Please use manual entry or check permissions.');
-                    this.showManualEntry();
-                }
-            }
-            
-            async startNFCScanning() {
-                try {
-                    const ndef = new NDEFReader();
-                    await ndef.scan();
-                    
-                    // Update UI for NFC mode
-                    document.getElementById('welcomeScreen').classList.add('hidden');
-                    document.getElementById('scannerContainer').classList.add('active');
-                    document.querySelector('.scanner-overlay').style.display = 'none';
-                    document.getElementById('scanner-video').style.display = 'none';
-                    
-                    const status = document.querySelector('.status');
-                    status.innerHTML = '📡 Hold NFC tag near device...';
-                    
-                    document.getElementById('nfcIndicator').classList.add('scanning');
-                    document.getElementById('nfcStatus').textContent = 'NFC Scanning...';
-                    
-                    this.isScanning = true;
-                    
-                    // NFC event listeners
-                    ndef.addEventListener('reading', ({ message, serialNumber }) => {
-                        let tokenId = serialNumber;
-                        
-                        // Try to extract token ID from NDEF message
-                        for (const record of message.records) {
-                            if (record.recordType === 'text') {
-                                const textDecoder = new TextDecoder(record.encoding);
-                                tokenId = textDecoder.decode(record.data);
-                                break;
-                            }
-                        }
-                        
-                        console.log('📡 NFC read:', tokenId);
-                        this.handleScan(tokenId);
-                    });
-                    
-                    ndef.addEventListener('readingerror', () => {
-                        console.error('NFC read error');
-                        this.showError('Failed to read NFC tag. Please try again.');
-                    });
-                    
-                    console.log('📡 NFC Scanner started');
-                    
-                } catch (error) {
-                    console.error('NFC scanning failed:', error);
-                    throw error;
-                }
-            }
-            
-            stopScanning() {
-                if (this.scanner) {
-                    this.scanner.stop();
-                    this.scanner = null;
-                }
-                
-                this.isScanning = false;
-                
-                // Update NFC indicator
-                document.getElementById('nfcIndicator').classList.remove('scanning');
-                document.getElementById('nfcStatus').textContent = 'NFC Ready';
-                
-                // Show welcome screen
-                document.getElementById('welcomeScreen').classList.remove('hidden');
-                document.getElementById('scannerContainer').classList.remove('active');
-                document.getElementById('memoryDisplay').classList.remove('active');
-            }
-            
-            /**
-             * Normalize and validate a token ID.
-             * Returns the normalized ID, or null if invalid (shows error + vibrates).
-             */
-            normalizeTokenId(rawId) {
-                const result = window.scannerCore.normalizeTokenId(rawId);
-                if (result.error) {
-                    this.showError(result.error);
-                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                    return null;
-                }
-                return result.tokenId;
-            }
-
-            handleScan(rawTokenId) {
-                console.log('Scanned token:', rawTokenId);
-
-                const tokenId = this.normalizeTokenId(rawTokenId);
-                if (!tokenId) return;
-
-                const token = this.tokens[tokenId];
-                if (!token) {
-                    console.log('Unknown token:', tokenId);
-                    this.showError(`Unknown token: ${tokenId}`);
-                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                    return;
-                }
-
-                this.processToken(token);
-            }
-            
-            handleOrchestratorResponse(response, isVideoToken) {
-                // Decisions A4 + A5: treatment depends on what actually happened
-                // server-side (classification logic lives in scannerCore for testability)
-                const { treatment, message } = window.scannerCore.classifyScanResponse(response, isVideoToken);
-
-                switch (treatment) {
-                    case 'video-triggered':
-                        this.showVideoAlert();
-                        setTimeout(() => this.hideVideoAlert(), 5000);
-                        break;
-                    case 'video-unavailable':
-                        this.showVideoUnavailable(message);
-                        break;
-                    case 'error':
-                    case 'queued':
-                        this.showError(message);
-                        break;
-                    // 'none': accepted (non-video) or standalone — no UI needed
-                }
-            }
-
-            processToken(token) {
-                // Send to orchestrator in networked mode (for ALL token types, not just video)
-                // Check isStandalone, NOT connected - scanToken() handles offline queueing internally
-                if (orchestrator && !orchestrator.isStandalone) {
-                    const teamId = sessionStorage.getItem('currentTeam') || '001';
-
-                    // Video alert is shown AFTER the orchestrator responds (Decision A4):
-                    // a queued/rejected scan never triggers playback, so we must not
-                    // promise "VIDEO MEMORY TRIGGERED" until the server accepts it.
-                    const isVideoToken = !!token.video;
-
-                    orchestrator.scanToken(token.SF_RFID, teamId)
-                        .then(response => this.handleOrchestratorResponse(response, isVideoToken))
-                        .catch(error => console.error('Orchestrator error:', error));
-                }
-
-                // Track if new or revisited
-                const isNew = !this.scannedTokens.has(token.SF_RFID || token.id);
-                if (isNew) {
-                    this.scannedTokens.add(token.SF_RFID || token.id);
-                }
-                
-                // Save current token
-                this.currentToken = token;
-                
-                // Display memory with status
-                this.displayMemory(token, isNew);
-                
-                // Save progress
-                this.saveData();
-                
-                // Haptic feedback
-                if (navigator.vibrate) {
-                    navigator.vibrate(200);
-                }
-                
-                console.log('✅ Token processed:', token.SF_RFID || token.id);
-            }
-
-            displayMemory(token, isNew) {
-                // Hide scanner, show memory display
-                document.getElementById('scannerContainer').classList.remove('active');
-                document.getElementById('memoryDisplay').classList.add('active');
-
-                // Reset and show status overlay (triggers auto-fade animation)
-                const statusOverlay = document.getElementById('memoryStatusOverlay');
-                statusOverlay.style.animation = 'none';
-                statusOverlay.offsetHeight; // Force reflow
-                statusOverlay.style.animation = 'status-fade 4s ease-out forwards';
-
-                // Show status (new vs revisited)
-                const status = document.getElementById('memoryStatus');
-                status.textContent = isNew ? '✨ New Memory!' : '✓ Memory Revisited';
-                status.className = isNew ? 'memory-status new-memory' : 'memory-status';
-
-                // Handle image display
-                const img = document.getElementById('memoryImage');
-                const placeholder = document.getElementById('audioPlaceholder');
-
-                if (token.image) {
-                    img.style.display = 'block';
-                    placeholder.classList.remove('active');
-                    img.classList.add('loading');
-                    // F-PARITY-12: wire onerror BEFORE setting src so a 404'd
-                    // image shows the fallback instead of a broken-image glyph
-                    img.onerror = () => this.handleImageError(img);
-                    img.src = token.image;
-                    img.onload = () => img.classList.remove('loading');
-                } else {
-                    // No image - show placeholder if audio exists
-                    img.style.display = 'none';
-                    if (token.audio) {
-                        placeholder.classList.add('active');
-                    } else {
-                        placeholder.classList.remove('active');
-                    }
-                }
-
-                // Setup audio with auto-play
-                if (token.audio) {
-                    this.setupAudioWithAutoplay(token.audio);
-                } else {
-                    // Hide audio indicator if no audio
-                    document.getElementById('audioIndicator').classList.remove('active');
-                }
-
-                // If no media at all, show token ID
-                if (!token.image && !token.audio) {
-                    status.textContent += ` Token: ${token.SF_RFID || token.id}`;
-                }
-            }
-            
-            handleImageError(img) {
-                console.error('❌ Failed to load image:', img.src);
-                // Clear handler first so a (theoretical) fallback failure can't loop
-                img.onerror = null;
-                img.classList.remove('loading');
-                // Use fallback image
-                img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"%3E%3Crect fill="%23888" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle"%3E🖼️%3C/text%3E%3C/svg%3E';
-            }
-            
-            setupAudioWithAutoplay(audioUrl) {
-                const audioIndicator = document.getElementById('audioIndicator');
-                const audio = document.getElementById('memoryAudio');
-
-                audio.src = audioUrl;
-                this.currentAudio = audio;
-
-                audioIndicator.classList.add('active');
-                audioIndicator.classList.remove('tap-to-play');
-
-                // Auto-play with fallback for blocked browsers
-                const playPromise = audio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(() => {
-                        audioIndicator.classList.add('tap-to-play');
-                    });
-                }
-
-                audio.onended = () => {
-                    audioIndicator.classList.remove('active');
-                };
-            }
-
-
-            stopAudio() {
-                if (this.currentAudio) {
-                    this.currentAudio.pause();
-                    this.currentAudio.currentTime = 0;
-                }
-            }
-            
-            
-            continueScan() {
-                // Stop any playing audio
-                this.stopAudio();
-
-                // Clean up audio event handler to prevent stale callbacks
-                const audio = document.getElementById('memoryAudio');
-                if (audio) {
-                    audio.onended = null;
-                }
-
-                // Hide audio indicator
-                const audioIndicator = document.getElementById('audioIndicator');
-                audioIndicator.classList.remove('active');
-                audioIndicator.classList.remove('tap-to-play');
-
-                // Hide memory display, show scanner
-                document.getElementById('memoryDisplay').classList.remove('active');
-                this.startScanning();
-            }
-            
-            viewCollection() {
-                // Show list of collected token IDs
-                const collected = Array.from(this.scannedTokens);
-                const count = collected.length;
-                
-                if (count === 0) {
-                    alert('No memories collected yet. Start scanning!');
-                } else {
-                    const tokenList = collected.sort().join('\n');
-                    alert(`Collected Memories (${count} unique):\n\n${tokenList}`);
-                }
-            }
-            
-            showManualEntry() {
-                document.getElementById('manualEntryModal').classList.add('active');
-                document.getElementById('manualTokenId').focus();
-            }
-            
-            hideManualEntry() {
-                document.getElementById('manualEntryModal').classList.remove('active');
-                document.getElementById('manualTokenId').value = '';
-            }
-            
-            processManualEntry() {
-                const tokenId = document.getElementById('manualTokenId').value.trim();
-                if (tokenId) {
-                    this.handleScan(tokenId);
-                    this.hideManualEntry();
-                }
-            }
-            
-            showError(message) {
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error-message';
-                errorDiv.textContent = message;
-                document.querySelector('.main-container').appendChild(errorDiv);
-
-                setTimeout(() => {
-                    errorDiv.remove();
-                }, 3000);
-            }
-
-            showVideoAlert() {
-                const alert = document.getElementById('video-alert');
-                alert.classList.add('active');
-
-                // Haptic feedback - dramatic pattern for video alert
-                if (navigator.vibrate) {
-                    navigator.vibrate([200, 100, 200, 100, 400]);
-                }
-
-                console.log('📺 Video alert shown - LOOK AT THE VIDEO SCREEN');
-            }
-
-            showVideoUnavailable(message) {
-                // Decision A4/A5 treatment: video token scanned but playback will
-                // NOT happen (offline-queued, video busy, or VLC down). The local
-                // memory display is unaffected; player rescans later to retry.
-                this.showError(`📺 ${message || 'Video unavailable — rescan to retry'}`);
-
-                // Distinct short vibration (vs the dramatic video-alert pattern)
-                if (navigator.vibrate) {
-                    navigator.vibrate([100, 50, 100]);
-                }
-
-                console.log('📺 Video unavailable treatment shown (no playback promised)');
-            }
-
-            hideVideoAlert() {
-                const alert = document.getElementById('video-alert');
-                // Add exiting class for exit animation
-                alert.classList.add('exiting');
-
-                // Remove after animation completes
-                setTimeout(() => {
-                    alert.classList.remove('active', 'exiting');
-                }, 300);
-
-                console.log('📺 Video alert hidden');
-            }
-            
-            isIOS() {
-                return /iPad|iPhone|iPod/.test(navigator.userAgent);
-            }
-            
-            installPWA() {
-                if (this.deferredPrompt) {
-                    this.deferredPrompt.prompt();
-                    this.deferredPrompt.userChoice.then((choiceResult) => {
-                        if (choiceResult.outcome === 'accepted') {
-                            console.log('✅ User accepted PWA install');
-                        }
-                        this.deferredPrompt = null;
-                    });
-                }
-                document.getElementById('installPrompt').classList.remove('show');
-            }
-            
-            dismissInstall() {
-                document.getElementById('installPrompt').classList.remove('show');
-                // Don't show again for 7 days
-                localStorage.setItem('installDismissed', Date.now());
-            }
-            
-            toggleDebugMode() {
-                // Debug mode for testing
-                const debugInfo = {
-                    tokens: Object.keys(this.tokens).length,
-                    scanned: this.scannedTokens.size,
-                    collected: Array.from(this.scannedTokens)
-                };
-                console.table(debugInfo);
-            }
-
-            /**
-             * Handle token passed via URL parameter from NFC tag
-             * Enables "tap tag -> auto-open browser -> auto-process token" flow
-             */
-            handleUrlToken() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const tokenFromUrl = urlParams.get('token');
-
-                if (tokenFromUrl) {
-                    console.log(`[NFC-URL] Token from URL parameter: ${tokenFromUrl}`);
-
-                    // Clean URL to prevent re-processing on refresh
-                    const cleanUrl = window.location.pathname;
-                    window.history.replaceState({}, document.title, cleanUrl);
-
-                    // Process the token after a short delay to ensure app is fully initialized
-                    setTimeout(() => {
-                        this.handleTokenFromUrl(tokenFromUrl);
-                    }, 500);
-                }
-            }
-
-            handleTokenFromUrl(rawTokenId) {
-                console.log('[NFC-URL] Processing token:', rawTokenId);
-                // Reuse the same scan path (normalizes, validates, and processes)
-                this.handleScan(rawTokenId);
-            }
-        }
-        
-        // Initialize app when DOM is ready
-    let app;
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            app = new MemoryScanner();
-            window.app = app;  // Make it available globally
-        });
-    } else {
-        app = new MemoryScanner();
-        window.app = app;
-    }
-    </script>
 
     <!-- Scanner Core (pure logic, no DOM deps) -->
     <script src="js/scannerCore.js"></script>
 
+    <!-- Token Display (memory rendering, error/video UI) -->
+    <script src="js/tokenDisplay.js"></script>
+
     <!-- Orchestrator Integration -->
     <script src="js/orchestratorIntegration.js"></script>
-    <script>
-        window.orchestrator = null;
 
-        function initOrchestrator() {
-            window.orchestrator = new OrchestratorIntegration();
-
-            window.addEventListener('orchestrator:connected', () => {
-                document.getElementById('connection-status').classList.add('connected');
-                document.querySelector('.status-text').textContent = 'Online';
-            });
-
-            window.addEventListener('orchestrator:disconnected', () => {
-                document.getElementById('connection-status').classList.remove('connected');
-                document.querySelector('.status-text').textContent = 'Offline';
-            });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initOrchestrator);
-        } else {
-            initOrchestrator();
-        }
-    </script>
+    <!-- Main Application (MemoryScanner class + bootstrap) -->
+    <script src="js/app.js"></script>
 
     <!-- Video Alert - Dramatic Full-Screen Notification -->
     <div id="video-alert" class="video-alert">
