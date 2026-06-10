@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.7.0 - Discovery probes HTTP redirect port 8000, resolves HTTPS:3000 orchestrator URLs
+// Version 1.8.0 - tokens.json served network-first with cache fallback (F-PARITY-07)
 
-const CACHE_NAME = 'aln-scanner-v1.7';  // Discovery now probes HTTP redirect port 8000 → resolves HTTPS:3000 (cross-origin self-signed cert workaround)
+const CACHE_NAME = 'aln-scanner-v1.8';  // tokens.json network-first (F-PARITY-07): token DB refreshes on load when online, no cache-bump needed for token edits
 const APP_SHELL = [
   './',
   './index.html',
@@ -112,6 +112,27 @@ self.addEventListener('fetch', event => {
     return;
   }
   
+  // Token database: network-first with cache fallback (F-PARITY-07).
+  // Previously served cache-first from the app shell, so a standalone event
+  // could silently run on stale tokens until a CACHE_NAME bump. Now every
+  // load fetches fresh tokens when online and falls back to cache offline.
+  if (url.pathname.endsWith('/data/tokens.json')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, responseToCache))
+              .catch(err => console.error('[Service Worker] tokens.json cache put error:', err));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
   // Handle app requests
   event.respondWith(
     caches.match(request)
@@ -247,4 +268,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.5.0 loaded');
+console.log('[Service Worker] Version 1.8.0 loaded');
