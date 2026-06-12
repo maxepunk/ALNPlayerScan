@@ -214,6 +214,38 @@ describe('OrchestratorIntegration', () => {
       expect(status.connected).toBe(false);
       expect(status.deviceId).toBeDefined();
     });
+
+    test('getQueueStatus reports pendingBatchSize additively (queueSize excludes snapshot items)', () => {
+      const orch = createInstance('/player-scanner/');
+      expect(orch.getQueueStatus().pendingBatchSize).toBe(0);
+
+      orch.pendingBatch = { batchId: 'batch-1', items: [{ tokenId: 't1' }, { tokenId: 't2' }] };
+      orch.queueOffline('t3', 'team');
+      const status = orch.getQueueStatus();
+      expect(status.pendingBatchSize).toBe(2);
+      // E2E flow-21 contract: queueSize counts ONLY offlineQueue — it must
+      // drain to 0 even while an unresolved snapshot is retained
+      expect(status.queueSize).toBe(1);
+    });
+
+    test('loadQueue drops corrupted items (keeps well-formed ones) with a warning', () => {
+      mockStorage['offline_queue'] = JSON.stringify([
+        { tokenId: 'good1', teamId: 'team', timestamp: 123 },
+        'corrupt-string',
+        { teamId: 'no-tokenId', timestamp: 456 },
+        null,
+        { tokenId: 'good2', teamId: 'team', timestamp: 789 },
+      ]);
+      const orch = createInstance('/player-scanner/');
+      expect(orch.offlineQueue.map(i => i.tokenId)).toEqual(['good1', 'good2']);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('3 corrupted item(s)'));
+    });
+
+    test('loadQueue tolerates a non-array payload (resets to empty)', () => {
+      mockStorage['offline_queue'] = JSON.stringify({ not: 'an array' });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.offlineQueue).toEqual([]);
+    });
   });
 
   // ─── Scan Operations ──────────────────────────────────────────────
@@ -567,6 +599,122 @@ describe('OrchestratorIntegration', () => {
       const orch = createInstance('/player-scanner/');
       expect(orch.pendingBatch).toBeNull();
       expect(mockStorage['pending_batch_id']).toBeUndefined();
+    });
+
+    // ─── Review fixes: steady-state drain, snapshot-first write, poison items ──
+
+    test('steady-state monitor tick retries a batch left pending by 5xx (same batchId, exact snapshot)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      // Batch send 503s — snapshot retained; the connection never flips
+      // offline, so onConnectionRestored will NOT fire for this batch
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.pendingBatch.items).toHaveLength(2);
+      const firstBatchId = batchIdOfCall(global.fetch);
+      const firstTokens = JSON.parse(global.fetch.mock.calls[0][1].body)
+        .transactions.map(t => t.tokenId);
+
+      // Steady-state tick: connection already up, health 200 — must drain
+      // the pending snapshot (previously only the offline→online flip did)
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      const drainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      await orch.checkConnection();
+      expect(drainSpy).toHaveBeenCalled();
+      await drainSpy.mock.results[0].value; // settle the fire-and-forget drain
+
+      // fetch call 0 = health check, call 1 = batch retry
+      const retryBody = JSON.parse(global.fetch.mock.calls[1][1].body);
+      expect(retryBody.batchId).toBe(firstBatchId);
+      expect(retryBody.transactions.map(t => t.tokenId)).toEqual(firstTokens);
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('batch formation persists the snapshot BEFORE shrinking the saved queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      // A crash between the two writes must DUPLICATE (snapshot saved, queue
+      // still holding the items) rather than LOSE (queue shrunk, no snapshot)
+      Storage.prototype.setItem.mockClear();
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+
+      const keys = Storage.prototype.setItem.mock.calls.map(call => call[0]);
+      const snapshotWrite = keys.indexOf('pending_batch');
+      const queueWrite = keys.indexOf('offline_queue');
+      expect(snapshotWrite).toBeGreaterThanOrEqual(0);
+      expect(queueWrite).toBeGreaterThanOrEqual(0);
+      expect(snapshotWrite).toBeLessThan(queueWrite);
+    });
+
+    test('after a resolved batch, the 1s self-chain drains the remaining queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      for (let i = 0; i < 12; i++) orch.queueOffline(`t${i}`, 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(2); // 10 sent, 2 remain
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      const chainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      jest.advanceTimersByTime(1000);
+      expect(chainSpy).toHaveBeenCalled();
+      await chainSpy.mock.results[0].value; // settle the fire-and-forget chain
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('after a dropped 4xx batch, the 1s self-chain continues with the rest of the queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      for (let i = 0; i < 11; i++) orch.queueOffline(`t${i}`, 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 400, json: () => Promise.resolve({ message: 'Validation failed' }),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(1); // batch of 10 dropped, 1 remains
+      expect(orch.pendingBatch).toBeNull();
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      const chainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      jest.advanceTimersByTime(1000);
+      await chainSpy.mock.results[0].value; // settle the fire-and-forget chain
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(JSON.parse(global.fetch.mock.calls[0][1].body).transactions.map(t => t.tokenId))
+        .toEqual(['t10']);
+    });
+
+    test('_loadPendingBatch drops corrupted snapshot items, keeps well-formed ones', () => {
+      mockStorage['pending_batch'] = JSON.stringify({
+        batchId: 'batch-1',
+        items: [{ tokenId: 'good1', teamId: 'team', timestamp: 123 }, { bad: true }, null],
+      });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch.batchId).toBe('batch-1');
+      expect(orch.pendingBatch.items.map(i => i.tokenId)).toEqual(['good1']);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('2 corrupted item(s)'));
+    });
+
+    test('_loadPendingBatch clears a snapshot whose items are ALL corrupted', () => {
+      mockStorage['pending_batch'] = JSON.stringify({ batchId: 'batch-1', items: ['bad', null] });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
     });
 
     // ─── Partial batch failure logging (merge-readiness review minor) ──

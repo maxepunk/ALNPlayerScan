@@ -1,8 +1,9 @@
 /**
  * OrchestratorIntegration - Manages communication with ALN Orchestrator
  * Provides offline queue support: scans that fail at the network level
- * (fetch rejection / 5xx) are queued and replayed in batches when the
- * connection monitor (10s health-check interval) observes a reconnect.
+ * (fetch rejection / 5xx) are queued and replayed in batches by the
+ * connection monitor (10s health-check interval) — on reconnect, and on
+ * steady-state ticks while a pending batch or queued scans remain.
  *
  * DUAL-MODE OPERATION:
  * - Networked Mode: Served from /player-scanner/ path, connection monitoring + queue
@@ -193,7 +194,7 @@ class OrchestratorIntegration {
     try {
       const saved = localStorage.getItem('offline_queue');
       if (saved) {
-        this.offlineQueue = JSON.parse(saved);
+        this.offlineQueue = this._filterValidItems(JSON.parse(saved), 'offline_queue');
         console.log(`Loaded ${this.offlineQueue.length} queued transactions`);
       }
     } catch (e) {
@@ -202,9 +203,32 @@ class OrchestratorIntegration {
     }
   }
 
+  /**
+   * Drop corrupted queue items at load time. A non-object item (or one
+   * without a string tokenId) would otherwise become a poison batch: the
+   * per-item mapping in the batch send can throw inside the fetch try, get
+   * misclassified as a network failure, and retry the same batchId forever.
+   * @param {*} items - parsed localStorage payload (any shape)
+   * @param {string} source - storage key, for the warning
+   * @returns {Array} only well-formed items
+   * @private
+   */
+  _filterValidItems(items, source) {
+    if (!Array.isArray(items)) {
+      console.warn(`Dropped non-array ${source} payload`);
+      return [];
+    }
+    const valid = items.filter(item => item && typeof item === 'object' && typeof item.tokenId === 'string');
+    if (valid.length !== items.length) {
+      console.warn(`Dropped ${items.length - valid.length} corrupted item(s) from ${source}`);
+    }
+    return valid;
+  }
+
   async processOfflineQueue() {
-    // PS-1 umbrella: reentrancy guard — concurrent invocations (connection
-    // monitor tick + post-scan trigger) must not form or send a batch twice.
+    // PS-1 umbrella: reentrancy guard — concurrent invocations (connection-
+    // restored handler, steady-state monitor tick, 1s self-chain after a
+    // resolved batch) must not form or send a batch twice.
     if (this._processingBatch || !this.connected) {
       return;
     }
@@ -230,8 +254,11 @@ class OrchestratorIntegration {
     // pending_batch storage until the batch resolves.
     if (!this.pendingBatch) {
       const items = this.offlineQueue.splice(0, 10); // Up to 10 at a time
-      this.saveQueue();
+      // Persist the snapshot BEFORE shrinking the saved queue: a crash
+      // between the two localStorage writes then duplicates the items on
+      // reload (benign for player scans) instead of losing them.
       this.setPendingBatch({ batchId: this.generateBatchId(), items });
+      this.saveQueue();
     }
     const { batchId, items: batch } = this.pendingBatch;
 
@@ -296,7 +323,9 @@ class OrchestratorIntegration {
 
       // Process remaining queue
       if (this.offlineQueue.length > 0) {
-        setTimeout(() => this.processOfflineQueue(), 1000);
+        setTimeout(() => {
+          this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
+        }, 1000);
       }
       return;
     }
@@ -319,7 +348,9 @@ class OrchestratorIntegration {
 
       // Continue with the rest of the queue
       if (this.offlineQueue.length > 0) {
-        setTimeout(() => this.processOfflineQueue(), 1000);
+        setTimeout(() => {
+          this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
+        }, 1000);
       }
       return;
     }
@@ -367,7 +398,14 @@ class OrchestratorIntegration {
       if (!saved) return null;
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed.batchId === 'string' && Array.isArray(parsed.items)) {
-        return parsed;
+        // Same poison-batch defense as loadQueue: drop corrupted items; if
+        // nothing valid remains there is nothing to resend under this id.
+        const items = this._filterValidItems(parsed.items, 'pending_batch');
+        if (items.length === 0) {
+          localStorage.removeItem('pending_batch');
+          return null;
+        }
+        return { batchId: parsed.batchId, items };
       }
       localStorage.removeItem('pending_batch');
       return null;
@@ -400,6 +438,12 @@ class OrchestratorIntegration {
       } else if (!this.connected && !wasOffline) {
         console.log('Connection lost!');
         this.onConnectionLost();
+      } else if (this.connected && (this.pendingBatch || this.offlineQueue.length > 0)) {
+        // Steady-state drain: a batch left pending by a 5xx or send timeout
+        // has no offline→online flip to retrigger it — retry it on the
+        // monitor tick. The _processingBatch reentrancy guard makes this
+        // safe; same fire-and-forget catch rationale as onConnectionRestored.
+        this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
       }
 
       return this.connected;
@@ -462,7 +506,8 @@ class OrchestratorIntegration {
   getQueueStatus() {
     return {
       connected: this.connected,
-      queueSize: this.offlineQueue.length,
+      queueSize: this.offlineQueue.length, // queue only — excludes snapshot items (E2E flow-21 contract)
+      pendingBatchSize: this.pendingBatch ? this.pendingBatch.items.length : 0,
       maxQueueSize: this.maxQueueSize,
       deviceId: this.deviceId
     };
