@@ -450,6 +450,9 @@ class OrchestratorIntegration {
   clearQueue() {
     this.offlineQueue = [];
     this.saveQueue();
+    // PS-1 model: an unresolved batch snapshot is unsent work too — "clear
+    // queue" forgets it as well, or it would resurrect on the next process.
+    this.setPendingBatch(null);
     console.log('Offline queue cleared');
   }
 
