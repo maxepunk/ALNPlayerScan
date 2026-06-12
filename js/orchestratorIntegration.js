@@ -437,9 +437,12 @@ class OrchestratorIntegration {
     // Emit event for UI update
     window.dispatchEvent(new CustomEvent('orchestrator:connected'));
 
-    // Process offline queue
-    if (this.offlineQueue.length > 0) {
-      this.processOfflineQueue();
+    // Process offline queue (also resumes an unresolved pending batch).
+    // Fire-and-forget with an explicit catch: an unexpected throw here must
+    // never become an unhandled rejection (the queue retries on the next
+    // monitor tick anyway).
+    if (this.pendingBatch || this.offlineQueue.length > 0) {
+      this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
     }
   }
 
