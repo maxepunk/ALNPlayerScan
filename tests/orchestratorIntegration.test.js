@@ -568,6 +568,137 @@ describe('OrchestratorIntegration', () => {
       expect(orch.pendingBatch).toBeNull();
       expect(mockStorage['pending_batch_id']).toBeUndefined();
     });
+
+    // ─── Partial batch failure logging (merge-readiness review minor) ──
+
+    test('partial batch failure: logs console.error listing count and failed tokenIds', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-good', 'team');
+      orch.queueOffline('tok-bad', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'test-batch',
+          processedCount: 1,
+          totalCount: 2,
+          failedCount: 1,
+          results: [
+            { tokenId: 'tok-good', status: 'processed', videoQueued: false },
+            { tokenId: 'tok-bad', status: 'failed', videoQueued: false, error: 'TOKEN_NOT_FOUND' },
+          ],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      // Batch is resolved (cleared) even though items failed
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
+
+      // Diagnostic error logged
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('1'),
+        'Failed tokenIds:',
+        expect.arrayContaining(['tok-bad'])
+      );
+    });
+
+    test('partial batch failure: console.error message includes scan count', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-a', 'team');
+      orch.queueOffline('tok-b', 'team');
+      orch.queueOffline('tok-c', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'test-batch-2',
+          processedCount: 1,
+          totalCount: 3,
+          failedCount: 2,
+          results: [
+            { tokenId: 'tok-a', status: 'processed', videoQueued: false },
+            { tokenId: 'tok-b', status: 'failed', videoQueued: false, error: 'TOKEN_NOT_FOUND' },
+            { tokenId: 'tok-c', status: 'failed', videoQueued: false, error: 'VALIDATION_ERROR' },
+          ],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('2 of 3'),
+        'Failed tokenIds:',
+        expect.arrayContaining(['tok-b', 'tok-c'])
+      );
+    });
+
+    test('fully successful batch: logs console.log (not error)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-ok', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'all-good',
+          processedCount: 1,
+          totalCount: 1,
+          failedCount: 0,
+          results: [{ tokenId: 'tok-ok', status: 'processed', videoQueued: false }],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('partially failed'),
+        expect.anything(),
+        expect.anything()
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Batch processed successfully')
+      );
+    });
+
+    test('unparseable response body on ok:true: batch still cleared, no throw', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-x', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new Error('not json')),
+      });
+
+      await expect(orch.processOfflineQueue()).resolves.not.toThrow();
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('ok:true with missing failedCount field: treated as 0, no error logged', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-y', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ batchId: 'x', processedCount: 1, totalCount: 1 }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('partially failed'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
   });
 
   // ─── Connection Monitoring ────────────────────────────────────────

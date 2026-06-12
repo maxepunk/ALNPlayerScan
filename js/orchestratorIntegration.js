@@ -266,14 +266,32 @@ class OrchestratorIntegration {
       clearTimeout(timeoutHandle);
     }
 
-    if (!response) {
-      // Indeterminate send (no Response object) — network-class failure:
-      // snapshot stays pending, same reasoning as the catch above.
-      return;
-    }
-
     if (response.ok) {
-      console.log('Batch processed successfully');
+      // Parse the response body to detect per-item failures (F-SCAN-14).
+      // The backend always returns 200 even when some items fail validation —
+      // failedCount and per-item results carry the diagnostic detail.
+      // Parse defensively: an unparseable body doesn't change the outcome
+      // (the batch is resolved regardless), but we lose the failure detail.
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (e) {
+        // Non-JSON body — proceed without detail
+      }
+
+      const failedCount = (body && typeof body.failedCount === 'number') ? body.failedCount : 0;
+      if (failedCount > 0) {
+        const failedIds = (body.results || [])
+          .filter(r => r && r.status === 'failed')
+          .map(r => r.tokenId);
+        console.error(
+          `Batch partially failed: ${failedCount} of ${batch.length} scan(s) rejected by backend.`,
+          'Failed tokenIds:', failedIds
+        );
+      } else {
+        console.log('Batch processed successfully');
+      }
+
       this.setPendingBatch(null);
 
       // Process remaining queue
