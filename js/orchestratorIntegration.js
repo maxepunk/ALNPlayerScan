@@ -42,8 +42,11 @@ class OrchestratorIntegration {
       // Load offline queue from localStorage
       this.loadQueue();
 
-      // F-SCAN-10: restore in-flight batch id so a reload mid-retry reuses it
-      this.pendingBatchId = localStorage.getItem('pending_batch_id') || null;
+      // F-SCAN-10 + PS-1: restore the in-flight batch SNAPSHOT (id + exact
+      // contents) so a reload mid-retry resends precisely what may have
+      // already been processed under that id
+      this.pendingBatch = this._loadPendingBatch();
+      this._processingBatch = false;
 
       // Start connection monitoring
       this.startConnectionMonitor();
@@ -53,7 +56,8 @@ class OrchestratorIntegration {
       this.connected = false;
       this.connectionCheckInterval = null;
       this.pendingConnectionCheck = undefined;
-      this.pendingBatchId = null;
+      this.pendingBatch = null;
+      this._processingBatch = false;
 
       console.log('Player Scanner: Standalone mode detected (no orchestrator connection)');
     }
@@ -199,24 +203,49 @@ class OrchestratorIntegration {
   }
 
   async processOfflineQueue() {
-    if (this.offlineQueue.length === 0 || !this.connected) {
+    // PS-1 umbrella: reentrancy guard — concurrent invocations (connection
+    // monitor tick + post-scan trigger) must not form or send a batch twice.
+    if (this._processingBatch || !this.connected) {
       return;
     }
+    if (!this.pendingBatch && this.offlineQueue.length === 0) {
+      return;
+    }
+    this._processingBatch = true;
+    try {
+      await this._sendNextBatch();
+    } finally {
+      this._processingBatch = false;
+    }
+  }
 
-    console.log(`Processing ${this.offlineQueue.length} offline transactions...`);
-    const batch = this.offlineQueue.splice(0, 10); // Process up to 10 at a time
+  async _sendNextBatch() {
+    // PS-1: a batch is SNAPSHOTTED (id + exact contents) when formed and
+    // resent VERBATIM until resolved. The previous model re-built the batch
+    // from the queue on every attempt, so a scan queued between a lost
+    // response and its retry rode under the already-processed batchId — the
+    // backend idempotency cache (keyed on batchId alone) answered from cache
+    // and the new scan was cleared as "sent" without ever being processed
+    // (silent loss). Items leave offlineQueue at formation time and live in
+    // pending_batch storage until the batch resolves.
+    if (!this.pendingBatch) {
+      const items = this.offlineQueue.splice(0, 10); // Up to 10 at a time
+      this.saveQueue();
+      this.setPendingBatch({ batchId: this.generateBatchId(), items });
+    }
+    const { batchId, items: batch } = this.pendingBatch;
 
-    // F-SCAN-10: mint the batchId PER BATCH, not per attempt. Retries of the
-    // same batch reuse the same id (persisted across reloads) so the backend's
-    // idempotency cache deduplicates resends after a lost response.
-    const batchId = this.pendingBatchId || this.generateBatchId();
-    this.setPendingBatchId(batchId);
+    console.log(`Processing batch of ${batch.length} offline transaction(s)...`);
 
     let response;
+    const abort = new AbortController();
+    const timeoutHandle = setTimeout(() => abort.abort(), 10000);
     try {
       response = await fetch(`${this.baseUrl}/api/scan/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal, // PS-1 umbrella: bound the send — a hung fetch
+        // would otherwise hold the reentrancy guard forever
         body: JSON.stringify({
           batchId,  // P2.1: Idempotency key (stable across retries)
           transactions: batch.map(item => ({
@@ -230,25 +259,22 @@ class OrchestratorIntegration {
       });
     } catch (error) {
       console.error('Batch processing failed (network):', error);
-      // Re-queue for retry; pendingBatchId stays set for the next attempt
-      this.offlineQueue.unshift(...batch);
-      this.saveQueue();
+      // Snapshot stays pending — the next attempt resends it under the same
+      // batchId; backend idempotency dedupes if this send actually landed.
       return;
+    } finally {
+      clearTimeout(timeoutHandle);
     }
 
     if (!response) {
-      // Indeterminate send (no Response object) — treat as a network-class
-      // failure: requeue with the same pendingBatchId so backend idempotency
-      // protects against double-processing if the batch actually landed.
-      this.offlineQueue.unshift(...batch);
-      this.saveQueue();
+      // Indeterminate send (no Response object) — network-class failure:
+      // snapshot stays pending, same reasoning as the catch above.
       return;
     }
 
     if (response.ok) {
       console.log('Batch processed successfully');
-      this.setPendingBatchId(null);
-      this.saveQueue();
+      this.setPendingBatch(null);
 
       // Process remaining queue
       if (this.offlineQueue.length > 0) {
@@ -271,8 +297,7 @@ class OrchestratorIntegration {
         (body && body.message) || 'no error details',
         batch.map(item => item.tokenId)
       );
-      this.setPendingBatchId(null);
-      this.saveQueue();
+      this.setPendingBatch(null);
 
       // Continue with the rest of the queue
       if (this.offlineQueue.length > 0) {
@@ -281,27 +306,56 @@ class OrchestratorIntegration {
       return;
     }
 
-    // 5xx — retryable: re-queue, keep pendingBatchId for the retry
+    // 5xx — retryable: snapshot stays pending for the retry
     console.error(`Batch failed (HTTP ${response.status}), will retry`);
-    this.offlineQueue.unshift(...batch);
-    this.saveQueue();
   }
 
   /**
-   * Track the batchId of the in-flight/retrying batch (F-SCAN-10).
-   * Persisted to localStorage so a reload mid-retry keeps idempotency.
-   * @param {string|null} batchId - id to remember, or null to clear
+   * Persist/clear the in-flight batch SNAPSHOT (F-SCAN-10 + PS-1). The id
+   * AND the exact items are stored together so a retry — or a reload
+   * mid-retry — resends precisely what may already have been processed
+   * under this id.
+   * @param {{batchId: string, items: Array}|null} pending - snapshot, or null to clear
    */
-  setPendingBatchId(batchId) {
-    this.pendingBatchId = batchId;
+  setPendingBatch(pending) {
+    this.pendingBatch = pending;
     try {
-      if (batchId) {
-        localStorage.setItem('pending_batch_id', batchId);
+      if (pending) {
+        localStorage.setItem('pending_batch', JSON.stringify(pending));
       } else {
-        localStorage.removeItem('pending_batch_id');
+        localStorage.removeItem('pending_batch');
       }
     } catch (e) {
-      console.error('Failed to persist pending batch id:', e);
+      console.error('Failed to persist pending batch:', e);
+    }
+  }
+
+  /**
+   * Restore the persisted batch snapshot (constructor helper).
+   * @returns {{batchId: string, items: Array}|null}
+   * @private
+   */
+  _loadPendingBatch() {
+    try {
+      // Legacy key (id-only, pre-PS-1): its items were left in offline_queue
+      // by the old code, so they are still in the queue snapshot — drop the
+      // bare id and let the next batch mint a fresh one. Worst case the
+      // legacy batch already landed server-side and is resent under a new
+      // id: a duplicate, which is benign for player scans (allowed by
+      // design) — loss is not possible.
+      localStorage.removeItem('pending_batch_id');
+
+      const saved = localStorage.getItem('pending_batch');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.batchId === 'string' && Array.isArray(parsed.items)) {
+        return parsed;
+      }
+      localStorage.removeItem('pending_batch');
+      return null;
+    } catch (e) {
+      console.error('Failed to load pending batch:', e);
+      return null;
     }
   }
 

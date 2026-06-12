@@ -405,7 +405,7 @@ describe('OrchestratorIntegration', () => {
       return JSON.parse(mockFetch.mock.calls[idx][1].body).batchId;
     }
 
-    test('successful batch clears queue and pending batchId', async () => {
+    test('successful batch clears queue and pending batch snapshot', async () => {
       const orch = createInstance('/player-scanner/');
       orch.connected = true;
       orch.queueOffline('t1', 'team');
@@ -415,8 +415,8 @@ describe('OrchestratorIntegration', () => {
       await orch.processOfflineQueue();
 
       expect(orch.offlineQueue).toHaveLength(0);
-      expect(orch.pendingBatchId).toBeNull();
-      expect(mockStorage['pending_batch_id']).toBeUndefined();
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
     });
 
     test('F-SCAN-10: retry after 5xx reuses the SAME batchId', async () => {
@@ -425,12 +425,14 @@ describe('OrchestratorIntegration', () => {
       orch.queueOffline('t1', 'team');
       orch.queueOffline('t2', 'team');
 
-      // Attempt 1: 503 → requeued
+      // Attempt 1: 503 → snapshot stays pending (items moved OUT of the
+      // queue at formation, PS-1)
       global.fetch = jest.fn().mockResolvedValue({
         ok: false, status: 503, json: () => Promise.resolve({}),
       });
       await orch.processOfflineQueue();
-      expect(orch.offlineQueue).toHaveLength(2);
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatch.items).toHaveLength(2);
       const firstBatchId = batchIdOfCall(global.fetch);
 
       // Attempt 2: success → SAME batchId (backend idempotency cache works)
@@ -441,6 +443,7 @@ describe('OrchestratorIntegration', () => {
       await orch.processOfflineQueue();
       expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
       expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatch).toBeNull();
     });
 
     test('F-SCAN-10: retry after network error reuses the SAME batchId', async () => {
@@ -450,13 +453,61 @@ describe('OrchestratorIntegration', () => {
 
       global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
       await orch.processOfflineQueue();
-      expect(orch.offlineQueue).toHaveLength(1);
+      expect(orch.pendingBatch.items).toHaveLength(1);
       const firstBatchId = batchIdOfCall(global.fetch);
 
       orch.connected = true; // re-pin (see note in 5xx test)
       global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
       await orch.processOfflineQueue();
       expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
+    });
+
+    test('PS-1: a scan queued between a lost send and its retry is NOT lost', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      // Attempt 1: response lost (network-class) — the server may have
+      // processed the batch anyway. Snapshot stays pending.
+      global.fetch = jest.fn().mockRejectedValue(new Error('response lost'));
+      await orch.processOfflineQueue();
+      const firstBatchId = batchIdOfCall(global.fetch);
+      const firstTokens = JSON.parse(global.fetch.mock.calls[0][1].body)
+        .transactions.map(t => t.tokenId);
+
+      // A NEW scan arrives between attempts
+      orch.queueOffline('t2', 'team');
+
+      // Attempt 2 (retry): must resend EXACTLY the original snapshot — t2
+      // must not ride under the possibly-already-processed batchId, or the
+      // backend's cached response would mark it sent without processing it
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const retryBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(retryBody.batchId).toBe(firstBatchId);
+      expect(retryBody.transactions.map(t => t.tokenId)).toEqual(firstTokens);
+
+      // t2 is still queued and goes out under a DIFFERENT batchId
+      expect(orch.offlineQueue).toHaveLength(1);
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const nextBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(nextBody.batchId).not.toBe(firstBatchId);
+      expect(nextBody.transactions.map(t => t.tokenId)).toEqual(['t2']);
+    });
+
+    test('PS-1: concurrent processOfflineQueue calls send exactly one batch', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await Promise.all([orch.processOfflineQueue(), orch.processOfflineQueue()]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(orch.pendingBatch).toBeNull();
     });
 
     test('a NEW batch after success mints a NEW batchId', async () => {
@@ -488,7 +539,7 @@ describe('OrchestratorIntegration', () => {
       await orch.processOfflineQueue();
 
       expect(orch.offlineQueue).toHaveLength(0); // dropped, NOT requeued forever
-      expect(orch.pendingBatchId).toBeNull();
+      expect(orch.pendingBatch).toBeNull();
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('dropping'),
         expect.anything(),
@@ -496,18 +547,26 @@ describe('OrchestratorIntegration', () => {
       );
     });
 
-    test('pending batchId survives reload (persisted to localStorage)', async () => {
+    test('pending batch SNAPSHOT survives reload (persisted to localStorage)', async () => {
       const orch = createInstance('/player-scanner/');
       orch.connected = true;
       orch.queueOffline('t1', 'team');
 
       global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
       await orch.processOfflineQueue();
-      const persisted = mockStorage['pending_batch_id'];
-      expect(persisted).toBeTruthy();
+      const persisted = JSON.parse(mockStorage['pending_batch']);
+      expect(persisted.batchId).toBeTruthy();
+      expect(persisted.items.map(i => i.tokenId)).toEqual(['t1']);
 
       const orch2 = createInstance('/player-scanner/');
-      expect(orch2.pendingBatchId).toBe(persisted);
+      expect(orch2.pendingBatch).toEqual(persisted);
+    });
+
+    test('legacy id-only pending_batch_id key is dropped on load (items stayed in queue)', () => {
+      mockStorage['pending_batch_id'] = 'PLAYER_X_legacy_0';
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch_id']).toBeUndefined();
     });
   });
 

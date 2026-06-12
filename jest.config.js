@@ -28,11 +28,10 @@ module.exports = {
       functions: 80,
       lines: 80,
     },
-    'js/app.js': {
-      statements: 30,
-      branches: 20,
-      functions: 30,
-      lines: 30,
-    },
+    // js/app.js has NO threshold (PS-3): app.test.js loads it via
+    // fs.readFileSync + eval (it's a non-module browser script), so istanbul
+    // never instruments it and jest has no coverage data for it — a
+    // threshold entry made every `--coverage` run fail. Re-add a threshold
+    // if/when app.js becomes require()-able.
   },
 };

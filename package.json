@@ -5,6 +5,7 @@
   "description": "ALN Player Scanner PWA — unit tests only (no build system)",
   "scripts": {
     "test": "jest --verbose",
+    "coverage:check": "jest --coverage",
     "lint": "eslint js tests sw.js jest.config.js eslint.config.js"
   },
   "devDependencies": {

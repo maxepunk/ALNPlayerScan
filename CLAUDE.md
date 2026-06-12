@@ -223,9 +223,13 @@ Manages backend communication in networked mode:
 - Offline queue management (max 100 transactions) — queues ONLY on network-level
   failures (fetch rejection / 5xx); 4xx responses are FINAL and never queued
   (Decision A5, F-SCAN-01)
-- Batch replay on reconnection (`POST /api/scan/batch`, stable per-batch batchId
-  reused across retries — F-SCAN-10); replayed scans never trigger videos (A4)
-- LocalStorage persistence for offline scans, pending batchId, and deviceId
+- Batch replay on reconnection (`POST /api/scan/batch`): each batch is
+  SNAPSHOTTED (id + exact contents) at formation and resent verbatim until
+  resolved (F-SCAN-10 + PS-1 — a rebuilt-on-retry batch let new scans ride
+  an already-processed batchId and get silently lost to the backend's
+  idempotency cache); replayed scans never trigger videos (A4)
+- LocalStorage persistence for offline scans, the pending batch snapshot
+  (`pending_batch`), and deviceId
 - HTTPS URL normalization for Web NFC compatibility
 - Sends `deviceType: 'player'` with all scan requests
 
