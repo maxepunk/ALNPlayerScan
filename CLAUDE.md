@@ -170,11 +170,14 @@ open http://localhost:8000
 - Force cache update by incrementing `CACHE_NAME` in `sw.js:4`
 
 ### Service Worker Updates
-When modifying cached files (index.html, config.html, orchestratorIntegration.js):
-1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.4'`)
+When modifying cached app-shell files (index.html, config.html, orchestratorIntegration.js):
+1. Update `CACHE_NAME` in `sw.js:4` (e.g., `'aln-scanner-v1.9'`)
 2. Verify `APP_SHELL` paths match actual file locations (e.g., `./data/tokens.json` not `./tokens.json`)
 3. Deploy changes
-3. Users must close all app tabs and reopen to activate new service worker
+4. Users must close all app tabs and reopen to activate new service worker
+
+Note: `data/tokens.json` is served network-first (F-PARITY-07) — token data
+changes propagate on the next online page load without a cache bump.
 
 ## Testing
 
@@ -216,10 +219,17 @@ Single-page application with embedded JavaScript (~950 lines):
 ### js/orchestratorIntegration.js
 Manages backend communication in networked mode:
 - Auto-detects standalone vs networked deployment (path-based, handles trailing slash)
-- Connection monitoring with exponential backoff
-- Offline queue management (max 100 transactions)
-- Automatic retry on reconnection
-- LocalStorage persistence for offline scans
+- Connection monitoring (fixed 10s health-check interval — no backoff)
+- Offline queue management (max 100 transactions) — queues ONLY on network-level
+  failures (fetch rejection / 5xx); 4xx responses are FINAL and never queued
+  (Decision A5, F-SCAN-01)
+- Batch replay on reconnection (`POST /api/scan/batch`): each batch is
+  SNAPSHOTTED (id + exact contents) at formation and resent verbatim until
+  resolved (F-SCAN-10 + PS-1 — a rebuilt-on-retry batch let new scans ride
+  an already-processed batchId and get silently lost to the backend's
+  idempotency cache); replayed scans never trigger videos (A4)
+- LocalStorage persistence for offline scans, the pending batch snapshot
+  (`pending_batch`), and deviceId
 - HTTPS URL normalization for Web NFC compatibility
 - Sends `deviceType: 'player'` with all scan requests
 
@@ -227,16 +237,18 @@ Manages backend communication in networked mode:
 Network configuration UI for networked mode:
 - Manual orchestrator URL override
 - Connection status indicator
-- Device ID management
+- Read-only device ID display (persistent identity from localStorage `device_id`)
 
 ### styles/
 Modular CSS architecture split into 8 files: `variables.css`, `base.css`, `layout.css`, `components.css`, `screens.css`, `animations.css`, `memory-display.css`, and `main.css` (imports all others). Loaded via `main.css` entry point.
 
 ### sw.js
 Service worker for offline PWA functionality:
-- App shell caching strategy
+- App shell caching strategy (cache-first; refresh requires `CACHE_NAME` bump)
 - External resource caching (QR scanner library)
-- Network-first for token data
+- Network-first for token data (`data/tokens.json`) with cache fallback —
+  the token DB refreshes on every load when online; token edits do NOT
+  require a cache bump (F-PARITY-07)
 - Cache-first for assets
 
 ## Deployment

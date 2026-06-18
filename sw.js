@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
-// Version 1.7.0 - Discovery probes HTTP redirect port 8000, resolves HTTPS:3000 orchestrator URLs
+// Version 1.9.0 - phase2 module extraction: tokenDisplay.js + app.js added to precache
 
-const CACHE_NAME = 'aln-scanner-v1.7';  // Discovery now probes HTTP redirect port 8000 → resolves HTTPS:3000 (cross-origin self-signed cert workaround)
+const CACHE_NAME = 'aln-scanner-v1.10';  // PS-2: tokens.json branch ordered before path-scoped API branch (host-based match shadowed it in networked deployments)
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,8 +9,10 @@ const APP_SHELL = [
   './manifest.json',
   './data/tokens.json',
   './assets/images/placeholder.bmp',
-  './js/orchestratorIntegration.js',
   './js/scannerCore.js',
+  './js/tokenDisplay.js',
+  './js/app.js',
+  './js/orchestratorIntegration.js',
   // Modular CSS architecture
   './styles/main.css',
   './styles/variables.css',
@@ -91,8 +93,40 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Handle orchestrator API requests (network-first strategy)
-  if (url.href.includes('/api/') || url.href.includes(':3000')) {
+  // Token database: network-first with cache fallback (F-PARITY-07).
+  // Previously served cache-first from the app shell, so a standalone event
+  // could silently run on stale tokens until a CACHE_NAME bump. Now every
+  // load fetches fresh tokens when online and falls back to cache offline.
+  // ORDER MATTERS (PS-2): this branch must run BEFORE the API branch — in
+  // networked deployments the scanner is served from the orchestrator
+  // origin, and a host-based API match (the old ':3000' check) swallowed
+  // tokens.json, returning a 503 with no cache fallback on offline reload.
+  if (url.pathname.endsWith('/data/tokens.json')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, responseToCache))
+              .catch(err => console.error('[Service Worker] tokens.json cache put error:', err));
+            return response;
+          }
+          // HTTP error (404/500/...) — prefer the cached copy; surface the
+          // error response only when no cache exists
+          return caches.match(request).then(cached => cached || response);
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Handle orchestrator API requests (network-first strategy).
+  // Scoped by PATH (PS-2): /api/* and /health — never a host/port match,
+  // which captured EVERY same-origin asset when served from the
+  // orchestrator. Covers both same-origin (networked) and cross-origin
+  // (standalone scanner calling an orchestrator) requests.
+  if (url.pathname.startsWith('/api/') || url.pathname === '/health') {
     event.respondWith(
       fetch(request)
         .catch(() => {
@@ -111,7 +145,7 @@ self.addEventListener('fetch', event => {
     );
     return;
   }
-  
+
   // Handle app requests
   event.respondWith(
     caches.match(request)
@@ -247,4 +281,4 @@ async function updateTokenDatabase() {
 }
 
 // Log service worker version
-console.log('[Service Worker] Version 1.5.0 loaded');
+console.log('[Service Worker] Version 1.9.0 loaded');

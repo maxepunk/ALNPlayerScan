@@ -4,9 +4,13 @@
   "private": true,
   "description": "ALN Player Scanner PWA — unit tests only (no build system)",
   "scripts": {
-    "test": "jest --verbose"
+    "test": "jest --verbose",
+    "coverage:check": "jest --coverage",
+    "lint": "eslint js tests sw.js jest.config.js eslint.config.js"
   },
   "devDependencies": {
+    "eslint": "^9.39.4",
+    "globals": "^17.6.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0"
   }

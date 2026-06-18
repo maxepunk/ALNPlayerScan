@@ -43,8 +43,9 @@ describe('OrchestratorIntegration', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     setupStorageMock();
-    // Suppress console.log/error during tests
+    // Suppress console.log/warn/error during tests
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -86,6 +87,28 @@ describe('OrchestratorIntegration', () => {
     test('networked mode starts connection monitor', () => {
       const orch = createInstance('/player-scanner/');
       expect(orch.connectionCheckInterval).not.toBeNull();
+    });
+  });
+
+  // ─── Device Identity (F-PARITY-04) ────────────────────────────────
+
+  describe('deviceId persistence', () => {
+    test('uses stored device_id from localStorage when present', () => {
+      mockStorage['device_id'] = 'PLAYER_STABLE_123';
+      const orch = createInstance('/player-scanner/');
+      expect(orch.deviceId).toBe('PLAYER_STABLE_123');
+    });
+
+    test('F-PARITY-04: persists a generated deviceId back to localStorage', () => {
+      const orch = createInstance('/player-scanner/');
+      expect(orch.deviceId).toMatch(/^PLAYER_/);
+      expect(mockStorage['device_id']).toBe(orch.deviceId);
+    });
+
+    test('deviceId is stable across reloads (no registry churn)', () => {
+      const orch1 = createInstance('/player-scanner/');
+      const orch2 = createInstance('/player-scanner/');
+      expect(orch2.deviceId).toBe(orch1.deviceId);
     });
   });
 
@@ -166,8 +189,8 @@ describe('OrchestratorIntegration', () => {
 
     test('loadQueue restores from localStorage', () => {
       mockStorage['offline_queue'] = JSON.stringify([
-        { tokenId: 'saved1', teamId: 'team', timestamp: 123, retryCount: 0 },
-        { tokenId: 'saved2', teamId: 'team', timestamp: 456, retryCount: 0 },
+        { tokenId: 'saved1', teamId: 'team', timestamp: 123 },
+        { tokenId: 'saved2', teamId: 'team', timestamp: 456 },
       ]);
       const orch = createInstance('/player-scanner/');
       expect(orch.offlineQueue).toHaveLength(2);
@@ -190,6 +213,38 @@ describe('OrchestratorIntegration', () => {
       expect(status.maxQueueSize).toBe(100);
       expect(status.connected).toBe(false);
       expect(status.deviceId).toBeDefined();
+    });
+
+    test('getQueueStatus reports pendingBatchSize additively (queueSize excludes snapshot items)', () => {
+      const orch = createInstance('/player-scanner/');
+      expect(orch.getQueueStatus().pendingBatchSize).toBe(0);
+
+      orch.pendingBatch = { batchId: 'batch-1', items: [{ tokenId: 't1' }, { tokenId: 't2' }] };
+      orch.queueOffline('t3', 'team');
+      const status = orch.getQueueStatus();
+      expect(status.pendingBatchSize).toBe(2);
+      // E2E flow-21 contract: queueSize counts ONLY offlineQueue — it must
+      // drain to 0 even while an unresolved snapshot is retained
+      expect(status.queueSize).toBe(1);
+    });
+
+    test('loadQueue drops corrupted items (keeps well-formed ones) with a warning', () => {
+      mockStorage['offline_queue'] = JSON.stringify([
+        { tokenId: 'good1', teamId: 'team', timestamp: 123 },
+        'corrupt-string',
+        { teamId: 'no-tokenId', timestamp: 456 },
+        null,
+        { tokenId: 'good2', teamId: 'team', timestamp: 789 },
+      ]);
+      const orch = createInstance('/player-scanner/');
+      expect(orch.offlineQueue.map(i => i.tokenId)).toEqual(['good1', 'good2']);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('3 corrupted item(s)'));
+    });
+
+    test('loadQueue tolerates a non-array payload (resets to empty)', () => {
+      mockStorage['offline_queue'] = JSON.stringify({ not: 'an array' });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.offlineQueue).toEqual([]);
     });
   });
 
@@ -269,6 +324,528 @@ describe('OrchestratorIntegration', () => {
       expect(result.status).toBe('error');
       expect(result.queued).toBe(true);
       expect(orch.offlineQueue).toHaveLength(1);
+    });
+
+    // ─── F-SCAN-01 (P0) / Decision A5: 4xx is FINAL, only network-level
+    //     failures (fetch rejection / 5xx) may queue ─────────────────────
+
+    test('queues on 5xx server error (retryable)', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ error: 'SERVICE_UNAVAILABLE', message: 'Server is still initializing, please retry' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(true);
+      expect(orch.offlineQueue).toHaveLength(1);
+    });
+
+    test('409 video-rejected is FINAL: not queued, passes through rejected status', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({
+          status: 'rejected',
+          message: 'Video already playing, please wait',
+          tokenId: 'kaa001',
+          videoQueued: false,
+          waitTime: 30,
+        }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('rejected');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('409 SESSION_NOT_FOUND is FINAL: not queued, surfaces error', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({
+          error: 'SESSION_NOT_FOUND',
+          message: 'No active session - admin must create session first',
+        }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(result.error).toContain('No active session');
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('400 validation error is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'VALIDATION_ERROR', message: 'Validation failed: tokenId' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('404 TOKEN_NOT_FOUND is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: 'TOKEN_NOT_FOUND', message: 'Token kaa001 not recognized' }),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+
+    test('4xx with unparseable body is FINAL: not queued', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.reject(new Error('not json')),
+      });
+      const orch = createInstance('/player-scanner/', mockFetch);
+      orch.connected = true;
+
+      const result = await orch.scanToken('kaa001', 'team');
+      expect(result.status).toBe('error');
+      expect(result.queued).toBe(false);
+      expect(orch.offlineQueue).toHaveLength(0);
+    });
+  });
+
+  // ─── Batch Replay (F-SCAN-10) ─────────────────────────────────────
+
+  describe('processOfflineQueue', () => {
+    function batchIdOfCall(mockFetch, idx = 0) {
+      return JSON.parse(mockFetch.mock.calls[idx][1].body).batchId;
+    }
+
+    test('successful batch clears queue and pending batch snapshot', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
+    });
+
+    test('F-SCAN-10: retry after 5xx reuses the SAME batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      // Attempt 1: 503 → snapshot stays pending (items moved OUT of the
+      // queue at formation, PS-1)
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatch.items).toHaveLength(2);
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      // Attempt 2: success → SAME batchId (backend idempotency cache works)
+      // (constructor's initial checkConnection rejection settles during the
+      // first await and flips connected=false — re-pin it, as elsewhere)
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('F-SCAN-10: retry after network error reuses the SAME batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      await orch.processOfflineQueue();
+      expect(orch.pendingBatch.items).toHaveLength(1);
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).toBe(firstBatchId);
+    });
+
+    test('PS-1: a scan queued between a lost send and its retry is NOT lost', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      // Attempt 1: response lost (network-class) — the server may have
+      // processed the batch anyway. Snapshot stays pending.
+      global.fetch = jest.fn().mockRejectedValue(new Error('response lost'));
+      await orch.processOfflineQueue();
+      const firstBatchId = batchIdOfCall(global.fetch);
+      const firstTokens = JSON.parse(global.fetch.mock.calls[0][1].body)
+        .transactions.map(t => t.tokenId);
+
+      // A NEW scan arrives between attempts
+      orch.queueOffline('t2', 'team');
+
+      // Attempt 2 (retry): must resend EXACTLY the original snapshot — t2
+      // must not ride under the possibly-already-processed batchId, or the
+      // backend's cached response would mark it sent without processing it
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const retryBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(retryBody.batchId).toBe(firstBatchId);
+      expect(retryBody.transactions.map(t => t.tokenId)).toEqual(firstTokens);
+
+      // t2 is still queued and goes out under a DIFFERENT batchId
+      expect(orch.offlineQueue).toHaveLength(1);
+      orch.connected = true;
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const nextBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(nextBody.batchId).not.toBe(firstBatchId);
+      expect(nextBody.transactions.map(t => t.tokenId)).toEqual(['t2']);
+    });
+
+    test('PS-1: concurrent processOfflineQueue calls send exactly one batch', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await Promise.all([orch.processOfflineQueue(), orch.processOfflineQueue()]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('a NEW batch after success mints a NEW batchId', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+
+      orch.queueOffline('t1', 'team');
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      const firstBatchId = batchIdOfCall(global.fetch);
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      orch.queueOffline('t2', 'team');
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(batchIdOfCall(global.fetch)).not.toBe(firstBatchId);
+    });
+
+    test('F-SCAN-10: 400 batch response is DROPPED with error report, not requeued', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 400,
+        json: () => Promise.resolve({ error: 'VALIDATION_ERROR', message: 'Validation failed' }),
+      });
+      await orch.processOfflineQueue();
+
+      expect(orch.offlineQueue).toHaveLength(0); // dropped, NOT requeued forever
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('dropping'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    test('pending batch SNAPSHOT survives reload (persisted to localStorage)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+      await orch.processOfflineQueue();
+      const persisted = JSON.parse(mockStorage['pending_batch']);
+      expect(persisted.batchId).toBeTruthy();
+      expect(persisted.items.map(i => i.tokenId)).toEqual(['t1']);
+
+      const orch2 = createInstance('/player-scanner/');
+      expect(orch2.pendingBatch).toEqual(persisted);
+    });
+
+    test('legacy id-only pending_batch_id key is dropped on load (items stayed in queue)', () => {
+      mockStorage['pending_batch_id'] = 'PLAYER_X_legacy_0';
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch_id']).toBeUndefined();
+    });
+
+    // ─── Review fixes: steady-state drain, snapshot-first write, poison items ──
+
+    test('steady-state monitor tick retries a batch left pending by 5xx (same batchId, exact snapshot)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+      orch.queueOffline('t2', 'team');
+
+      // Batch send 503s — snapshot retained; the connection never flips
+      // offline, so onConnectionRestored will NOT fire for this batch
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.pendingBatch.items).toHaveLength(2);
+      const firstBatchId = batchIdOfCall(global.fetch);
+      const firstTokens = JSON.parse(global.fetch.mock.calls[0][1].body)
+        .transactions.map(t => t.tokenId);
+
+      // Steady-state tick: connection already up, health 200 — must drain
+      // the pending snapshot (previously only the offline→online flip did)
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      const drainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      await orch.checkConnection();
+      expect(drainSpy).toHaveBeenCalled();
+      await drainSpy.mock.results[0].value; // settle the fire-and-forget drain
+
+      // fetch call 0 = health check, call 1 = batch retry
+      const retryBody = JSON.parse(global.fetch.mock.calls[1][1].body);
+      expect(retryBody.batchId).toBe(firstBatchId);
+      expect(retryBody.transactions.map(t => t.tokenId)).toEqual(firstTokens);
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('batch formation persists the snapshot BEFORE shrinking the saved queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('t1', 'team');
+
+      // A crash between the two writes must DUPLICATE (snapshot saved, queue
+      // still holding the items) rather than LOSE (queue shrunk, no snapshot)
+      Storage.prototype.setItem.mockClear();
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 503, json: () => Promise.resolve({}),
+      });
+      await orch.processOfflineQueue();
+
+      const keys = Storage.prototype.setItem.mock.calls.map(call => call[0]);
+      const snapshotWrite = keys.indexOf('pending_batch');
+      const queueWrite = keys.indexOf('offline_queue');
+      expect(snapshotWrite).toBeGreaterThanOrEqual(0);
+      expect(queueWrite).toBeGreaterThanOrEqual(0);
+      expect(snapshotWrite).toBeLessThan(queueWrite);
+    });
+
+    test('after a resolved batch, the 1s self-chain drains the remaining queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      for (let i = 0; i < 12; i++) orch.queueOffline(`t${i}`, 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(2); // 10 sent, 2 remain
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      const chainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      jest.advanceTimersByTime(1000);
+      expect(chainSpy).toHaveBeenCalled();
+      await chainSpy.mock.results[0].value; // settle the fire-and-forget chain
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('after a dropped 4xx batch, the 1s self-chain continues with the rest of the queue', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      for (let i = 0; i < 11; i++) orch.queueOffline(`t${i}`, 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false, status: 400, json: () => Promise.resolve({ message: 'Validation failed' }),
+      });
+      await orch.processOfflineQueue();
+      expect(orch.offlineQueue).toHaveLength(1); // batch of 10 dropped, 1 remains
+      expect(orch.pendingBatch).toBeNull();
+
+      orch.connected = true; // re-pin (see note in 5xx test)
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+      const chainSpy = jest.spyOn(orch, 'processOfflineQueue');
+      jest.advanceTimersByTime(1000);
+      await chainSpy.mock.results[0].value; // settle the fire-and-forget chain
+
+      expect(orch.offlineQueue).toHaveLength(0);
+      expect(JSON.parse(global.fetch.mock.calls[0][1].body).transactions.map(t => t.tokenId))
+        .toEqual(['t10']);
+    });
+
+    test('_loadPendingBatch drops corrupted snapshot items, keeps well-formed ones', () => {
+      mockStorage['pending_batch'] = JSON.stringify({
+        batchId: 'batch-1',
+        items: [{ tokenId: 'good1', teamId: 'team', timestamp: 123 }, { bad: true }, null],
+      });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch.batchId).toBe('batch-1');
+      expect(orch.pendingBatch.items.map(i => i.tokenId)).toEqual(['good1']);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('2 corrupted item(s)'));
+    });
+
+    test('_loadPendingBatch clears a snapshot whose items are ALL corrupted', () => {
+      mockStorage['pending_batch'] = JSON.stringify({ batchId: 'batch-1', items: ['bad', null] });
+      const orch = createInstance('/player-scanner/');
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
+    });
+
+    // ─── Partial batch failure logging (merge-readiness review minor) ──
+
+    test('partial batch failure: logs console.error listing count and failed tokenIds', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-good', 'team');
+      orch.queueOffline('tok-bad', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'test-batch',
+          processedCount: 1,
+          totalCount: 2,
+          failedCount: 1,
+          results: [
+            { tokenId: 'tok-good', status: 'processed', videoQueued: false },
+            { tokenId: 'tok-bad', status: 'failed', videoQueued: false, error: 'TOKEN_NOT_FOUND' },
+          ],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      // Batch is resolved (cleared) even though items failed
+      expect(orch.pendingBatch).toBeNull();
+      expect(mockStorage['pending_batch']).toBeUndefined();
+
+      // Diagnostic error logged
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('1'),
+        'Failed tokenIds:',
+        expect.arrayContaining(['tok-bad'])
+      );
+    });
+
+    test('partial batch failure: console.error message includes scan count', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-a', 'team');
+      orch.queueOffline('tok-b', 'team');
+      orch.queueOffline('tok-c', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'test-batch-2',
+          processedCount: 1,
+          totalCount: 3,
+          failedCount: 2,
+          results: [
+            { tokenId: 'tok-a', status: 'processed', videoQueued: false },
+            { tokenId: 'tok-b', status: 'failed', videoQueued: false, error: 'TOKEN_NOT_FOUND' },
+            { tokenId: 'tok-c', status: 'failed', videoQueued: false, error: 'VALIDATION_ERROR' },
+          ],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('2 of 3'),
+        'Failed tokenIds:',
+        expect.arrayContaining(['tok-b', 'tok-c'])
+      );
+    });
+
+    test('fully successful batch: logs console.log (not error)', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-ok', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          batchId: 'all-good',
+          processedCount: 1,
+          totalCount: 1,
+          failedCount: 0,
+          results: [{ tokenId: 'tok-ok', status: 'processed', videoQueued: false }],
+        }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('partially failed'),
+        expect.anything(),
+        expect.anything()
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Batch processed successfully')
+      );
+    });
+
+    test('unparseable response body on ok:true: batch still cleared, no throw', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-x', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new Error('not json')),
+      });
+
+      await expect(orch.processOfflineQueue()).resolves.not.toThrow();
+      expect(orch.pendingBatch).toBeNull();
+    });
+
+    test('ok:true with missing failedCount field: treated as 0, no error logged', async () => {
+      const orch = createInstance('/player-scanner/');
+      orch.connected = true;
+      orch.queueOffline('tok-y', 'team');
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ batchId: 'x', processedCount: 1, totalCount: 1 }),
+      });
+
+      await orch.processOfflineQueue();
+
+      expect(orch.pendingBatch).toBeNull();
+      expect(console.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('partially failed'),
+        expect.anything(),
+        expect.anything()
+      );
     });
   });
 

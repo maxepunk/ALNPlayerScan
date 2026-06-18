@@ -1,6 +1,9 @@
 /**
  * OrchestratorIntegration - Manages communication with ALN Orchestrator
- * Provides offline queue support and automatic retry with exponential backoff
+ * Provides offline queue support: scans that fail at the network level
+ * (fetch rejection / 5xx) are queued and replayed in batches by the
+ * connection monitor (10s health-check interval) — on reconnect, and on
+ * steady-state ticks while a pending batch or queued scans remain.
  *
  * DUAL-MODE OPERATION:
  * - Networked Mode: Served from /player-scanner/ path, connection monitoring + queue
@@ -10,8 +13,20 @@ class OrchestratorIntegration {
   constructor() {
     this.baseUrl = localStorage.getItem('orchestrator_url') || this.detectOrchestratorUrl();
     this.maxQueueSize = 100; // Maximum offline transactions
-    this.retryDelay = 1000;  // Initial retry delay (exponential backoff)
-    this.deviceId = localStorage.getItem('device_id') || 'PLAYER_' + Date.now();
+
+    // F-PARITY-04: stable device identity — persist the generated id so the
+    // device keeps the same identity across page loads (per-device attribution
+    // in session.playerScans, no device-registry churn / heartbeat noise)
+    let deviceId = localStorage.getItem('device_id');
+    if (!deviceId) {
+      deviceId = 'PLAYER_' + Date.now();
+      try {
+        localStorage.setItem('device_id', deviceId);
+      } catch (e) {
+        console.error('Failed to persist device_id:', e);
+      }
+    }
+    this.deviceId = deviceId;
 
     // Detect deployment mode (FR:113 - Standalone "never attempts to connect")
     // Handle both /player-scanner and /player-scanner/ (trailing slash variations)
@@ -28,6 +43,12 @@ class OrchestratorIntegration {
       // Load offline queue from localStorage
       this.loadQueue();
 
+      // F-SCAN-10 + PS-1: restore the in-flight batch SNAPSHOT (id + exact
+      // contents) so a reload mid-retry resends precisely what may have
+      // already been processed under that id
+      this.pendingBatch = this._loadPendingBatch();
+      this._processingBatch = false;
+
       // Start connection monitoring
       this.startConnectionMonitor();
     } else {
@@ -36,6 +57,8 @@ class OrchestratorIntegration {
       this.connected = false;
       this.connectionCheckInterval = null;
       this.pendingConnectionCheck = undefined;
+      this.pendingBatch = null;
+      this._processingBatch = false;
 
       console.log('Player Scanner: Standalone mode detected (no orchestrator connection)');
     }
@@ -77,8 +100,9 @@ class OrchestratorIntegration {
       return { status: 'offline', queued: true };
     }
 
+    let response;
     try {
-      const response = await fetch(`${this.baseUrl}/api/scan`, {
+      response = await fetch(`${this.baseUrl}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,27 +113,57 @@ class OrchestratorIntegration {
           timestamp: new Date().toISOString()
         })
       });
-
-      if (!response.ok) {
-        // Try to parse error response body
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          if (errorData.message) {
-            errorMessage = errorData.message;
-          }
-        } catch (e) {
-          // If JSON parsing fails, use default message
-        }
-        throw new Error(errorMessage);
-      }
-
-      return await response.json();
     } catch (error) {
-      console.error('Scan failed:', error);
+      // Network-level failure (fetch rejection) — the request may never have
+      // reached the server. Queue for batch replay (Decision A5).
+      console.error('Scan failed (network):', error);
       this.queueOffline(tokenId, teamId);
       return { status: 'error', queued: true, error: error.message };
     }
+
+    // Parse response body (both success and error shapes are JSON)
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (e) {
+      // Non-JSON body — fall through with null body
+    }
+
+    if (response.ok) {
+      // 200: {status:'accepted', tokenId, mediaAssets, videoQueued}
+      return body || { status: 'accepted' };
+    }
+
+    if (response.status >= 500) {
+      // Server-side failure (5xx) — retryable, queue for replay (Decision A5)
+      console.error(`Scan failed (HTTP ${response.status}), queuing for replay`);
+      this.queueOffline(tokenId, teamId);
+      return {
+        status: 'error',
+        queued: true,
+        error: (body && body.message) || `HTTP error! status: ${response.status}`
+      };
+    }
+
+    // 4xx = FINAL — the server made a decision; NEVER queue (F-SCAN-01 P0,
+    // Decision A5: rejected scans are definitive, rescan to retry).
+    // /api/scan 409 is a documented oneOf:
+    //   {status:'rejected', ...}        → video trigger rejected, scan WAS recorded
+    //   {error:'SESSION_NOT_FOUND', ..} → scan NOT recorded (final: no session)
+    if (response.status === 409 && body && body.status === 'rejected') {
+      console.warn('Scan video-rejected (scan recorded, video skipped):', body.message);
+      return { ...body, queued: false };
+    }
+
+    // SESSION_NOT_FOUND 409, 400 validation, 404 unknown token, other 4xx
+    const errorMessage = (body && body.message) || `HTTP error! status: ${response.status}`;
+    console.warn(`Scan rejected (HTTP ${response.status}, final):`, errorMessage);
+    return {
+      status: 'error',
+      queued: false,
+      error: errorMessage,
+      ...(body && body.error && { code: body.error })
+    };
   }
 
   queueOffline(tokenId, teamId) {
@@ -121,8 +175,7 @@ class OrchestratorIntegration {
     this.offlineQueue.push({
       tokenId,
       teamId,
-      timestamp: Date.now(),
-      retryCount: 0
+      timestamp: Date.now()
     });
 
     this.saveQueue(); // Persist to localStorage
@@ -141,7 +194,7 @@ class OrchestratorIntegration {
     try {
       const saved = localStorage.getItem('offline_queue');
       if (saved) {
-        this.offlineQueue = JSON.parse(saved);
+        this.offlineQueue = this._filterValidItems(JSON.parse(saved), 'offline_queue');
         console.log(`Loaded ${this.offlineQueue.length} queued transactions`);
       }
     } catch (e) {
@@ -150,23 +203,78 @@ class OrchestratorIntegration {
     }
   }
 
+  /**
+   * Drop corrupted queue items at load time. A non-object item (or one
+   * without a string tokenId) would otherwise become a poison batch: the
+   * per-item mapping in the batch send can throw inside the fetch try, get
+   * misclassified as a network failure, and retry the same batchId forever.
+   * @param {*} items - parsed localStorage payload (any shape)
+   * @param {string} source - storage key, for the warning
+   * @returns {Array} only well-formed items
+   * @private
+   */
+  _filterValidItems(items, source) {
+    if (!Array.isArray(items)) {
+      console.warn(`Dropped non-array ${source} payload`);
+      return [];
+    }
+    const valid = items.filter(item => item && typeof item === 'object' && typeof item.tokenId === 'string');
+    if (valid.length !== items.length) {
+      console.warn(`Dropped ${items.length - valid.length} corrupted item(s) from ${source}`);
+    }
+    return valid;
+  }
+
   async processOfflineQueue() {
-    if (this.offlineQueue.length === 0 || !this.connected) {
+    // PS-1 umbrella: reentrancy guard — concurrent invocations (connection-
+    // restored handler, steady-state monitor tick, 1s self-chain after a
+    // resolved batch) must not form or send a batch twice.
+    if (this._processingBatch || !this.connected) {
       return;
     }
-
-    console.log(`Processing ${this.offlineQueue.length} offline transactions...`);
-    const batch = this.offlineQueue.splice(0, 10); // Process up to 10 at a time
-
-    // P2.1: Generate batchId for idempotency
-    const batchId = this.generateBatchId();
-
+    if (!this.pendingBatch && this.offlineQueue.length === 0) {
+      return;
+    }
+    this._processingBatch = true;
     try {
-      const response = await fetch(`${this.baseUrl}/api/scan/batch`, {
+      await this._sendNextBatch();
+    } finally {
+      this._processingBatch = false;
+    }
+  }
+
+  async _sendNextBatch() {
+    // PS-1: a batch is SNAPSHOTTED (id + exact contents) when formed and
+    // resent VERBATIM until resolved. The previous model re-built the batch
+    // from the queue on every attempt, so a scan queued between a lost
+    // response and its retry rode under the already-processed batchId — the
+    // backend idempotency cache (keyed on batchId alone) answered from cache
+    // and the new scan was cleared as "sent" without ever being processed
+    // (silent loss). Items leave offlineQueue at formation time and live in
+    // pending_batch storage until the batch resolves.
+    if (!this.pendingBatch) {
+      const items = this.offlineQueue.splice(0, 10); // Up to 10 at a time
+      // Persist the snapshot BEFORE shrinking the saved queue: a crash
+      // between the two localStorage writes then duplicates the items on
+      // reload (benign for player scans) instead of losing them.
+      this.setPendingBatch({ batchId: this.generateBatchId(), items });
+      this.saveQueue();
+    }
+    const { batchId, items: batch } = this.pendingBatch;
+
+    console.log(`Processing batch of ${batch.length} offline transaction(s)...`);
+
+    let response;
+    const abort = new AbortController();
+    const timeoutHandle = setTimeout(() => abort.abort(), 10000);
+    try {
+      response = await fetch(`${this.baseUrl}/api/scan/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal, // PS-1 umbrella: bound the send — a hung fetch
+        // would otherwise hold the reentrancy guard forever
         body: JSON.stringify({
-          batchId,  // P2.1: Idempotency key
+          batchId,  // P2.1: Idempotency key (stable across retries)
           transactions: batch.map(item => ({
             tokenId: item.tokenId,
             teamId: item.teamId,
@@ -176,25 +284,134 @@ class OrchestratorIntegration {
           }))
         })
       });
-
-      if (response.ok) {
-        console.log('Batch processed successfully');
-        this.saveQueue();
-
-        // Process remaining queue
-        if (this.offlineQueue.length > 0) {
-          setTimeout(() => this.processOfflineQueue(), 1000);
-        }
-      } else {
-        // Re-queue failed batch
-        this.offlineQueue.unshift(...batch);
-        this.saveQueue();
-      }
     } catch (error) {
-      console.error('Batch processing failed:', error);
-      // Re-queue failed batch
-      this.offlineQueue.unshift(...batch);
-      this.saveQueue();
+      console.error('Batch processing failed (network):', error);
+      // Snapshot stays pending — the next attempt resends it under the same
+      // batchId; backend idempotency dedupes if this send actually landed.
+      return;
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (response.ok) {
+      // Parse the response body to detect per-item failures (F-SCAN-14).
+      // The backend always returns 200 even when some items fail validation —
+      // failedCount and per-item results carry the diagnostic detail.
+      // Parse defensively: an unparseable body doesn't change the outcome
+      // (the batch is resolved regardless), but we lose the failure detail.
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (e) {
+        // Non-JSON body — proceed without detail
+      }
+
+      const failedCount = (body && typeof body.failedCount === 'number') ? body.failedCount : 0;
+      if (failedCount > 0) {
+        const failedIds = (body.results || [])
+          .filter(r => r && r.status === 'failed')
+          .map(r => r.tokenId);
+        console.error(
+          `Batch partially failed: ${failedCount} of ${batch.length} scan(s) rejected by backend.`,
+          'Failed tokenIds:', failedIds
+        );
+      } else {
+        console.log('Batch processed successfully');
+      }
+
+      this.setPendingBatch(null);
+
+      // Process remaining queue
+      if (this.offlineQueue.length > 0) {
+        setTimeout(() => {
+          this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
+        }, 1000);
+      }
+      return;
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      // F-SCAN-10: 4xx is FINAL — drop the batch with an error report instead
+      // of requeueing it forever.
+      let body = null;
+      try {
+        body = await response.json();
+      } catch (e) {
+        // No parseable body
+      }
+      console.error(
+        `Batch rejected (HTTP ${response.status}) — dropping ${batch.length} scan(s):`,
+        (body && body.message) || 'no error details',
+        batch.map(item => item.tokenId)
+      );
+      this.setPendingBatch(null);
+
+      // Continue with the rest of the queue
+      if (this.offlineQueue.length > 0) {
+        setTimeout(() => {
+          this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
+        }, 1000);
+      }
+      return;
+    }
+
+    // 5xx — retryable: snapshot stays pending for the retry
+    console.error(`Batch failed (HTTP ${response.status}), will retry`);
+  }
+
+  /**
+   * Persist/clear the in-flight batch SNAPSHOT (F-SCAN-10 + PS-1). The id
+   * AND the exact items are stored together so a retry — or a reload
+   * mid-retry — resends precisely what may already have been processed
+   * under this id.
+   * @param {{batchId: string, items: Array}|null} pending - snapshot, or null to clear
+   */
+  setPendingBatch(pending) {
+    this.pendingBatch = pending;
+    try {
+      if (pending) {
+        localStorage.setItem('pending_batch', JSON.stringify(pending));
+      } else {
+        localStorage.removeItem('pending_batch');
+      }
+    } catch (e) {
+      console.error('Failed to persist pending batch:', e);
+    }
+  }
+
+  /**
+   * Restore the persisted batch snapshot (constructor helper).
+   * @returns {{batchId: string, items: Array}|null}
+   * @private
+   */
+  _loadPendingBatch() {
+    try {
+      // Legacy key (id-only, pre-PS-1): its items were left in offline_queue
+      // by the old code, so they are still in the queue snapshot — drop the
+      // bare id and let the next batch mint a fresh one. Worst case the
+      // legacy batch already landed server-side and is resent under a new
+      // id: a duplicate, which is benign for player scans (allowed by
+      // design) — loss is not possible.
+      localStorage.removeItem('pending_batch_id');
+
+      const saved = localStorage.getItem('pending_batch');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.batchId === 'string' && Array.isArray(parsed.items)) {
+        // Same poison-batch defense as loadQueue: drop corrupted items; if
+        // nothing valid remains there is nothing to resend under this id.
+        const items = this._filterValidItems(parsed.items, 'pending_batch');
+        if (items.length === 0) {
+          localStorage.removeItem('pending_batch');
+          return null;
+        }
+        return { batchId: parsed.batchId, items };
+      }
+      localStorage.removeItem('pending_batch');
+      return null;
+    } catch (e) {
+      console.error('Failed to load pending batch:', e);
+      return null;
     }
   }
 
@@ -221,6 +438,12 @@ class OrchestratorIntegration {
       } else if (!this.connected && !wasOffline) {
         console.log('Connection lost!');
         this.onConnectionLost();
+      } else if (this.connected && (this.pendingBatch || this.offlineQueue.length > 0)) {
+        // Steady-state drain: a batch left pending by a 5xx or send timeout
+        // has no offline→online flip to retrigger it — retry it on the
+        // monitor tick. The _processingBatch reentrancy guard makes this
+        // safe; same fire-and-forget catch rationale as onConnectionRestored.
+        this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
       }
 
       return this.connected;
@@ -258,9 +481,12 @@ class OrchestratorIntegration {
     // Emit event for UI update
     window.dispatchEvent(new CustomEvent('orchestrator:connected'));
 
-    // Process offline queue
-    if (this.offlineQueue.length > 0) {
-      this.processOfflineQueue();
+    // Process offline queue (also resumes an unresolved pending batch).
+    // Fire-and-forget with an explicit catch: an unexpected throw here must
+    // never become an unhandled rejection (the queue retries on the next
+    // monitor tick anyway).
+    if (this.pendingBatch || this.offlineQueue.length > 0) {
+      this.processOfflineQueue().catch(e => console.error('Queue processing failed:', e));
     }
   }
 
@@ -280,7 +506,8 @@ class OrchestratorIntegration {
   getQueueStatus() {
     return {
       connected: this.connected,
-      queueSize: this.offlineQueue.length,
+      queueSize: this.offlineQueue.length, // queue only — excludes snapshot items (E2E flow-21 contract)
+      pendingBatchSize: this.pendingBatch ? this.pendingBatch.items.length : 0,
       maxQueueSize: this.maxQueueSize,
       deviceId: this.deviceId
     };
@@ -289,6 +516,9 @@ class OrchestratorIntegration {
   clearQueue() {
     this.offlineQueue = [];
     this.saveQueue();
+    // PS-1 model: an unresolved batch snapshot is unsent work too — "clear
+    // queue" forgets it as well, or it would resurrect on the next process.
+    this.setPendingBatch(null);
     console.log('Offline queue cleared');
   }
 
