@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Last verified: 2026-02-06
+Last verified: 2026-06-18
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -20,7 +20,7 @@ The scanner detects its deployment context automatically:
 - **Standalone**: Served from GitHub Pages (any path except `/player-scanner/`)
 - **Networked**: Served from orchestrator at `/player-scanner/` path
 
-Detection in `js/orchestratorIntegration.js:19`:
+Detection in `js/orchestratorIntegration.js` (constructor):
 ```javascript
 const pathname = window.location.pathname;
 this.isStandalone = !pathname.startsWith('/player-scanner/') && pathname !== '/player-scanner';
@@ -45,7 +45,7 @@ All scans to orchestrator include `deviceType` field for duplicate detection:
 ```javascript
 {
   tokenId: 'token123',
-  teamId: 'RedTeam',  // Optional (1-30 chars)
+  teamId: 'RedTeam',  // Optional (any non-empty string; omitted from payload when falsy)
   deviceId: this.deviceId,
   deviceType: 'player',  // REQUIRED - identifies scanner type
   timestamp: new Date().toISOString()
@@ -64,7 +64,7 @@ aln-memory-scanner/
 
 **Key Principle**: Single source of truth via Git submodules. Both Player Scanner and GM Scanner repos point to the same ALN-TokenData repository.
 
-**Fallback Chain** (`index.html:~193`):
+**Fallback Chain** (`js/app.js`, `loadTokens()`):
 1. `data/tokens.json` (submodule - preferred)
 2. `tokens.json` (root - backward compatibility)
 3. Demo data (hardcoded fallback)
@@ -191,6 +191,8 @@ npx jest tests/scannerCore.test.js # Run specific test file
 **Test files:**
 - `tests/scannerCore.test.js` — normalizeTokenId() and isStandaloneMode() pure logic
 - `tests/orchestratorIntegration.test.js` — mode detection, URL handling, offline queue, scan operations, connection monitoring
+- `tests/app.test.js` — `MemoryScanner` class behavior (token loading fallback chain, collection management, scan flow)
+- `tests/tokenDisplay.test.js` — memory rendering (image/audio/video display, error/video-alert UI) logic
 
 **Key patterns:**
 - `orchestratorIntegration.js` constructor has side effects (localStorage read, setInterval) — tests use `jest.useFakeTimers()` and `jest.resetModules()` for isolation
@@ -203,18 +205,32 @@ Extracted pure logic (no DOM dependencies) from `MemoryScanner` class:
 - `normalizeTokenId(rawId)` — returns `{ tokenId }` or `{ error }` (no side effects)
 - `isStandaloneMode(pathname)` — path-based mode detection
 
-Works in both browser (`window.scannerCore`) and Node.js (`module.exports`). Index.html delegates to `window.scannerCore.normalizeTokenId()` and handles DOM side effects (showError, vibrate) locally.
+Works in both browser (`window.scannerCore`) and Node.js (`module.exports`). `js/app.js` (`MemoryScanner`) delegates to `window.scannerCore.normalizeTokenId()` and handles DOM side effects (showError, vibrate) locally.
 
 ## Key Components
 
 ### index.html
-Single-page application with embedded JavaScript (~950 lines):
-- `MemoryScanner` class: Main application logic
-- Token loading with fallback chain
+Thin HTML shell (~176 lines, no embedded application logic). Loads the external
+scripts in order: `js/scannerCore.js`, `js/tokenDisplay.js`,
+`js/orchestratorIntegration.js`, `js/app.js` (plus the qr-scanner library via CDN).
+The `MemoryScanner` class and rendering logic were extracted to JS modules during
+the phase2 module extraction (see `sw.js` header).
+
+### js/app.js
+Main application — `MemoryScanner` class:
+- Token loading with fallback chain (`loadTokens()`)
 - QR scanner integration (qr-scanner library via CDN)
-- Audio/image display logic
 - Collection management (localStorage)
-- Orchestrator integration via `OrchestratorIntegration` class
+- Orchestrator wiring via the `OrchestratorIntegration` class
+- Bootstraps `window.app = new MemoryScanner()` on load
+- Delegates token-ID normalization to `window.scannerCore` and rendering to `window.tokenDisplay`
+
+### js/tokenDisplay.js
+Memory rendering (no orchestrator/scan logic — purely visual output from a token object):
+- Image display
+- Audio autoplay
+- Video-alert overlay
+- Error toasts
 
 ### js/orchestratorIntegration.js
 Manages backend communication in networked mode:

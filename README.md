@@ -1,6 +1,6 @@
-# ALN Memory Scanner - GM Edition
+# ALN Memory Scanner - Player Edition
 
-A Progressive Web App for managing memory tokens in the "About Last Night" immersive crime thriller game. This GM scanner works with QR codes to reveal memory information during gameplay.
+A Progressive Web App for the "About Last Night" immersive crime thriller game. Players scan QR/NFC memory tokens to reveal their content — memory images and audio — and, in networked mode, trigger orchestrator-controlled video playback on the shared screen. This is the intel-gathering scanner: it does NOT score or process transactions (that is the separate GM scanner).
 
 ## 🎮 For Playtesting
 
@@ -17,7 +17,7 @@ See [PLAYTEST_QUICKSTART.md](PLAYTEST_QUICKSTART.md) for the complete playtest w
 - **Offline Support**: Works without internet after first load
 - **Audio/Visual**: Display images and play audio for each memory
 - **Collection Tracking**: Players build their memory collection
-- **GM Tools**: Token management and balance testing
+- **Token management & playtest tools**: Token sync and balance testing
 
 ## 📁 Project Structure
 
@@ -61,8 +61,8 @@ python3 sync.py --deploy
 ## 🔄 Token Management
 
 Tokens can be edited in three places:
-1. This GM scanner (`data/tokens.json`)
-2. Player scanner (separate repo)
+1. This player scanner (`data/tokens.json`)
+2. GM scanner (separate repo)
 3. Shared token repository (ALN-TokenData)
 
 After any edit, run `python3 sync.py --deploy` to sync everywhere.
