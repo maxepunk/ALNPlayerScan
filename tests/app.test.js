@@ -669,4 +669,56 @@ describe('MemoryScanner', () => {
       expect(window.app.tokens).toHaveProperty('test_001');
     });
   });
+
+  describe('loadPackInfo (A2 staleness visibility — identity only, ledger L3)', () => {
+    const MANIFEST = {
+      packId: 'about-last-night',
+      version: '1.0.0',
+      contentHash: `sha256:${'a'.repeat(64)}`,
+    };
+    const flush = async () => {
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    };
+
+    test('records pack identity from ./data/pack-manifest.json (standalone origin)', async () => {
+      loadApp({ tokens: { t: { SF_RFID: 't', image: null, audio: null } } });
+      await flush();
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(MANIFEST),
+      });
+
+      const info = await window.app.loadPackInfo();
+
+      expect(global.fetch).toHaveBeenCalledWith('./data/pack-manifest.json', { cache: 'no-store' });
+      expect(info).toEqual(MANIFEST);
+      expect(JSON.parse(mockStorage.aln_pack_info)).toEqual(MANIFEST);
+    });
+
+    test('uses /api/pack/manifest when served from the orchestrator', async () => {
+      loadApp({ tokens: { t: { SF_RFID: 't', image: null, audio: null } } });
+      await flush();
+
+      window.location.pathname = '/player-scanner/';
+      global.fetch = jest.fn().mockResolvedValue({ ok: false });
+
+      const info = await window.app.loadPackInfo();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/pack/manifest', { cache: 'no-store' });
+      expect(info).toBeNull();
+    });
+
+    test('offline / pre-pack deploy leaves identity null without breaking the app', async () => {
+      loadApp({ tokens: { t: { SF_RFID: 't', image: null, audio: null } } });
+      await flush();
+
+      global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
+
+      const info = await window.app.loadPackInfo();
+
+      expect(info).toBeNull();
+      expect(window.app.packInfo).toBeNull();
+    });
+  });
 });

@@ -225,6 +225,9 @@
         <div class="form-group">
             <label for="deviceIdDisplay">Device ID</label>
             <input type="text" id="deviceIdDisplay" readonly value="">
+            <!-- A2 staleness visibility: pack identity recorded by app.js loadPackInfo() -->
+            <label for="packInfoDisplay">Game Pack</label>
+            <input type="text" id="packInfoDisplay" readonly value="unknown (pre-pack deploy or offline)">
             <p class="info-text">Persistent identity sent with every scan (read-only)</p>
         </div>
 
@@ -259,6 +262,16 @@
 
             // Show this device's persistent identity (F-PARITY-04: read-only)
             document.getElementById('deviceIdDisplay').value = orchestrator.deviceId;
+
+            // Show the recorded pack identity (A2 staleness visibility —
+            // written by app.js loadPackInfo() on each online app load)
+            try {
+                const packInfo = JSON.parse(localStorage.getItem('aln_pack_info') || 'null');
+                if (packInfo && packInfo.contentHash) {
+                    document.getElementById('packInfoDisplay').value =
+                        `${packInfo.packId} v${packInfo.version} (${String(packInfo.contentHash).slice(7, 15)})`;
+                }
+            } catch (e) { /* leave the default text */ }
 
             // Listen for connection events
             window.addEventListener('orchestrator:connected', updateConnectionStatus);
