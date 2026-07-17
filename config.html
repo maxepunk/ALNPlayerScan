@@ -225,10 +225,14 @@
         <div class="form-group">
             <label for="deviceIdDisplay">Device ID</label>
             <input type="text" id="deviceIdDisplay" readonly value="">
+            <p class="info-text">Persistent identity sent with every scan (read-only)</p>
+        </div>
+
+        <div class="form-group">
             <!-- A2 staleness visibility: pack identity recorded by app.js loadPackInfo() -->
             <label for="packInfoDisplay">Game Pack</label>
             <input type="text" id="packInfoDisplay" readonly value="unknown (pre-pack deploy or offline)">
-            <p class="info-text">Persistent identity sent with every scan (read-only)</p>
+            <p class="info-text">Token pack this device last loaded (read-only)</p>
         </div>
 
         <button id="testBtn" onclick="testConnection()">Test Connection</button>

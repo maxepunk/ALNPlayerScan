@@ -68,6 +68,9 @@ function makeScannerCore(overrides = {}) {
       return { tokenId: id.toLowerCase().replace(/[^a-z0-9_]/g, '') };
     }),
     classifyScanResponse: jest.fn(() => ({ treatment: 'none' })),
+    // Real implementation: pure logic, and loadPackInfo() must exercise the
+    // canonical path-based detection (trailing-slash nuance included).
+    isStandaloneMode: require('../js/scannerCore.js').isStandaloneMode,
     ...overrides
   };
 }

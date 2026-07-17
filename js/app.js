@@ -97,9 +97,9 @@ class MemoryScanner {
    */
   async loadPackInfo() {
     const pathname = window.location.pathname;
-    const url = (pathname.startsWith('/player-scanner'))
-      ? '/api/pack/manifest'
-      : './data/pack-manifest.json';
+    const url = window.scannerCore.isStandaloneMode(pathname)
+      ? './data/pack-manifest.json'
+      : '/api/pack/manifest';
     this.packInfo = null;
     try {
       const response = await fetch(url, { cache: 'no-store' });
