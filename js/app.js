@@ -29,6 +29,10 @@ class MemoryScanner {
       // Load token database from external file
       await this.loadTokenDatabase();
 
+      // Record the pack identity for staleness visibility (best-effort,
+      // non-blocking — fire and forget)
+      this.loadPackInfo();
+
       // Setup capabilities
       this.checkCapabilities();
 
@@ -80,6 +84,44 @@ class MemoryScanner {
         console.log('⚠️ Using fallback token database');
       }
     }
+  }
+
+  /**
+   * A2 staleness visibility (scoped: identity ONLY — the PWA displays
+   * media, it doesn't score, so full staged pack refresh is deliberately
+   * deferred; see the parent repo's transitional-debt ledger entry L3).
+   * Fetches the pack manifest network-first from the deployment's pack
+   * channel (orchestrator-served → /api/pack/manifest; Pages/standalone →
+   * the live submodule copy at ./data/) and records the pack identity for
+   * the config page display.
+   */
+  async loadPackInfo() {
+    const pathname = window.location.pathname;
+    const url = window.scannerCore.isStandaloneMode(pathname)
+      ? './data/pack-manifest.json'
+      : '/api/pack/manifest';
+    this.packInfo = null;
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (response.ok) {
+        const manifest = await response.json();
+        if (manifest && manifest.contentHash && manifest.packId && manifest.version) {
+          this.packInfo = {
+            packId: manifest.packId,
+            version: manifest.version,
+            contentHash: manifest.contentHash
+          };
+          console.log(`📦 Pack: ${manifest.packId} v${manifest.version} (${window.scannerCore.shortPackHash(manifest.contentHash)})`);
+          try {
+            localStorage.setItem('aln_pack_info', JSON.stringify(this.packInfo));
+          } catch (e) { /* quota — display is best-effort */ }
+        }
+      }
+    } catch (error) {
+      // Offline / pre-pack deploy — identity stays null, app runs normally
+      console.log('Pack manifest unavailable (offline or pre-pack deploy)');
+    }
+    return this.packInfo;
   }
 
   getDefaultTokens() {

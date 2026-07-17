@@ -1,7 +1,7 @@
 // Service Worker for ALN Memory Scanner
 // Version 1.9.0 - phase2 module extraction: tokenDisplay.js + app.js added to precache
 
-const CACHE_NAME = 'aln-scanner-v1.10';  // PS-2: tokens.json branch ordered before path-scoped API branch (host-based match shadowed it in networked deployments)
+const CACHE_NAME = 'aln-scanner-v1.11';  // A2 pack identity: config.html + app.js app-shell changes; pack-manifest.json network-first
 const APP_SHELL = [
   './',
   './index.html',
@@ -114,6 +114,29 @@ self.addEventListener('fetch', event => {
           }
           // HTTP error (404/500/...) — prefer the cached copy; surface the
           // error response only when no cache exists
+          return caches.match(request).then(cached => cached || response);
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Pack manifest: network-first with cache fallback, mirroring the
+  // tokens.json branch above. The whole point of the pack line on the
+  // config page is STALENESS visibility — if this ever came from a cache
+  // by default, the display would lie about what the deployment serves.
+  // (Same PS-2 ordering constraint: before the API branch.)
+  if (url.pathname.endsWith('/data/pack-manifest.json')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, responseToCache))
+              .catch(err => console.error('[Service Worker] pack-manifest cache put error:', err));
+            return response;
+          }
           return caches.match(request).then(cached => cached || response);
         })
         .catch(() => caches.match(request))

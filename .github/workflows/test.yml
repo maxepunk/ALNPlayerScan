@@ -60,6 +60,11 @@ jobs:
           # `version` is a generation timestamp — strip before diffing.
           a.pop('version', None)
           b.pop('version', None)
+          # `pack` records which TokenData state the sync ran against —
+          # generation context, not asset content. The bare regeneration
+          # above never embeds it, so strip it from both sides too.
+          a.pop('pack', None)
+          b.pop('pack', None)
           if a != b:
               print('::error::Committed manifest does not match actual assets.')
               print('Run: python3 scripts/generate_asset_manifest.py from parent repo,')
