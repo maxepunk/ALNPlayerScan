@@ -7,6 +7,20 @@
  */
 const scannerCore = {
   /**
+   * Short display form of a pack content hash: strips an optional
+   * "algo:" prefix (e.g. "sha256:"), then takes the first 8 chars.
+   * Tolerates plain hex and short/missing values — never slices into
+   * the middle of a hash the way a fixed offset would.
+   * @param {string} hash
+   * @returns {string}
+   */
+  shortPackHash(hash) {
+    const s = String(hash || '');
+    const hex = s.includes(':') ? s.slice(s.indexOf(':') + 1) : s;
+    return hex.slice(0, 8);
+  },
+
+  /**
    * Normalize and validate a token ID.
    * @param {string} rawId - Raw token ID from QR/NFC/manual entry
    * @returns {{ tokenId: string } | { error: string }} - Normalized ID or error

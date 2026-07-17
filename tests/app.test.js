@@ -68,9 +68,11 @@ function makeScannerCore(overrides = {}) {
       return { tokenId: id.toLowerCase().replace(/[^a-z0-9_]/g, '') };
     }),
     classifyScanResponse: jest.fn(() => ({ treatment: 'none' })),
-    // Real implementation: pure logic, and loadPackInfo() must exercise the
-    // canonical path-based detection (trailing-slash nuance included).
+    // Real implementations: pure logic, and loadPackInfo() must exercise
+    // the canonical path-based detection (trailing-slash nuance included)
+    // and the shared hash formatter.
     isStandaloneMode: require('../js/scannerCore.js').isStandaloneMode,
+    shortPackHash: require('../js/scannerCore.js').shortPackHash,
     ...overrides
   };
 }
@@ -697,6 +699,23 @@ describe('MemoryScanner', () => {
       expect(global.fetch).toHaveBeenCalledWith('./data/pack-manifest.json', { cache: 'no-store' });
       expect(info).toEqual(MANIFEST);
       expect(JSON.parse(mockStorage.aln_pack_info)).toEqual(MANIFEST);
+    });
+
+    test('a 200 response missing identity fields leaves packInfo null (fail-safe display)', async () => {
+      loadApp({ tokens: { t: { SF_RFID: 't', image: null, audio: null } } });
+      await flush();
+
+      // Missing contentHash entirely, then missing packId — neither may
+      // be recorded (a partial identity renders as "undefined v…").
+      for (const body of [{ packId: 'x', version: '1' }, { version: '1', contentHash: 'sha256:abc' }]) {
+        global.fetch = jest.fn().mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve(body),
+        });
+        const info = await window.app.loadPackInfo();
+        expect(info).toBeNull();
+        expect(window.app.packInfo).toBeNull();
+      }
     });
 
     test('uses /api/pack/manifest when served from the orchestrator', async () => {

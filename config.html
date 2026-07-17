@@ -249,6 +249,7 @@
         <a href="index.html" class="back-link">&larr; Back to Scanner</a>
     </div>
 
+    <script src="js/scannerCore.js"></script>
     <script src="js/orchestratorIntegration.js"></script>
     <script>
         let orchestrator = null;
@@ -273,7 +274,7 @@
                 const packInfo = JSON.parse(localStorage.getItem('aln_pack_info') || 'null');
                 if (packInfo && packInfo.contentHash) {
                     document.getElementById('packInfoDisplay').value =
-                        `${packInfo.packId} v${packInfo.version} (${String(packInfo.contentHash).slice(7, 15)})`;
+                        `${packInfo.packId} v${packInfo.version} (${window.scannerCore.shortPackHash(packInfo.contentHash)})`;
                 }
             } catch (e) { /* leave the default text */ }
 

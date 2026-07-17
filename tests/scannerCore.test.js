@@ -173,4 +173,20 @@ describe('scannerCore', () => {
       expect(result.message).toBeTruthy();
     });
   });
+
+  describe('shortPackHash', () => {
+    test('strips an algo: prefix and takes 8 chars', () => {
+      expect(scannerCore.shortPackHash('sha256:deadbeefcafe0123')).toBe('deadbeef');
+    });
+
+    test('plain hex takes the leading 8 chars', () => {
+      expect(scannerCore.shortPackHash('0123abcdef0123abcdef')).toBe('0123abcd');
+    });
+
+    test('short and missing values pass through safely', () => {
+      expect(scannerCore.shortPackHash('abc')).toBe('abc');
+      expect(scannerCore.shortPackHash('')).toBe('');
+      expect(scannerCore.shortPackHash(undefined)).toBe('');
+    });
+  });
 });

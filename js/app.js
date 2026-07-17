@@ -105,13 +105,13 @@ class MemoryScanner {
       const response = await fetch(url, { cache: 'no-store' });
       if (response.ok) {
         const manifest = await response.json();
-        if (manifest && manifest.contentHash) {
+        if (manifest && manifest.contentHash && manifest.packId && manifest.version) {
           this.packInfo = {
             packId: manifest.packId,
             version: manifest.version,
             contentHash: manifest.contentHash
           };
-          console.log(`📦 Pack: ${manifest.packId} v${manifest.version} (${String(manifest.contentHash).slice(7, 15)})`);
+          console.log(`📦 Pack: ${manifest.packId} v${manifest.version} (${window.scannerCore.shortPackHash(manifest.contentHash)})`);
           try {
             localStorage.setItem('aln_pack_info', JSON.stringify(this.packInfo));
           } catch (e) { /* quota — display is best-effort */ }
