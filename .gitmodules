@@ -1,5 +1,5 @@
 [submodule "data"]
 	path = data
 	url = https://github.com/maxepunk/ALN-TokenData.git
-	branch = main
+	branch = production-2026-07
 	update = merge
