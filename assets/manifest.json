@@ -317,10 +317,6 @@
       "sha1": "886bd8990563dc2b4fadbef8ce5a2eb71be9945e",
       "size": 230454
     },
-    "placeholder": {
-      "sha1": "36281c7d6a142dad9df119a154bcbc98d57be73b",
-      "size": 230454
-    },
     "qui001": {
       "sha1": "946bdf2362c55e96dee1f5a41fb67c00e8e75eca",
       "size": 230454
@@ -526,5 +522,5 @@
       "size": 230454
     }
   },
-  "version": "2026-04-17T10:17:42Z"
+  "version": "2026-07-17T22:55:50Z"
 }
